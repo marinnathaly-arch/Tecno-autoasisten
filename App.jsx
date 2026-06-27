@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
    SUPABASE CONFIG
 ═══════════════════════════════════════════════════ */
 const SB_URL = "https://zeruqsdmbzwgrxkqdikc.supabase.co";
-const SB_KEY = "sb_publishable_EHDqsg98NbwXJmssO1scHg_DihAJocx";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplcnVxc2RtYnp3Z3J4a3FkaWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MDk1NTksImV4cCI6MjA5ODA4NTU1OX0.mtCPiSxtlekVeeAAVpEzCgiv0jZ-KjQrPWKevnGSCzY";
 
 const sb = {
   async get(table) {
