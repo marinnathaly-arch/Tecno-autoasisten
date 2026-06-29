@@ -250,6 +250,7 @@ const NAV = [
   { id:"suppliers",   icon:"🏭", label:"Proveedores",        group:"gestión" },
   { id:"accounting",  icon:"💰", label:"Contabilidad",       group:"gestión" },
   { id:"library",     icon:"📚", label:"Biblioteca",         group:"gestión" },
+  { id:"users",       icon:"🔐", label:"Usuarios",          group:"admin" },
 ];
 
 const GROUPS = {
@@ -258,6 +259,7 @@ const GROUPS = {
   análisis:  "Análisis",
   ia:        "✨ Inteligencia Artificial",
   gestión:   "Módulos adicionales",
+  admin:     "⚙️ Administración",
 };
 
 /* ═══════════════════════════════════════════════════
@@ -426,6 +428,7 @@ function MainApp({ session, onLogout }) {
           : page==="ai_diag"     ? <AIDiagPage     data={data} />
           : page==="ai_quote"    ? <AIQuotePage    data={data} />
           : page==="ai_manual"   ? <AIManualPage   data={data} />
+          : page==="users"       ? <UsersPage      session={session} />
           : null}
         </div>
       </div>
@@ -2714,6 +2717,151 @@ function AuthPage({ onLogin }) {
           🔒 Acceso controlado · Solo personal autorizado por el taller
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   USERS PAGE — Aprobación de cuentas
+═══════════════════════════════════════════════════ */
+function UsersPage({ session }) {
+  const [users,   setUsers]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast2,  setToast2]  = useState(null);
+
+  const showMsg = (msg, type="ok") => { setToast2({msg,type}); setTimeout(()=>setToast2(null),3000); };
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const tk = localStorage.getItem("tac_token") || SB_KEY;
+      const r  = await fetch(`${SB_URL}/rest/v1/pending_users?order=created_at.desc`, {
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}` }
+      });
+      const data = await r.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch(e) { setUsers([]); }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const updateStatus = async (id, status) => {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
+    await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    showMsg(status === "approved" ? "Usuario aprobado ✓" : "Usuario rechazado");
+    loadUsers();
+  };
+
+  const deleteUser = async (id) => {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
+    await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}` }
+    });
+    showMsg("Usuario eliminado", "err");
+    loadUsers();
+  };
+
+  const STATUS_CFG = {
+    pending:  { label:"Pendiente",  color:C.amber,  bg:"#2D1A00" },
+    approved: { label:"Aprobado",   color:C.green,  bg:"#002D1A" },
+    rejected: { label:"Rechazado",  color:C.red,    bg:"#2D0000" },
+  };
+
+  const counts = {
+    pending:  users.filter(u=>u.status==="pending").length,
+    approved: users.filter(u=>u.status==="approved").length,
+    rejected: users.filter(u=>u.status==="rejected").length,
+  };
+
+  return (
+    <div>
+      <div style={{ fontWeight:800, fontSize:22, marginBottom:6 }}>🔐 Gestión de Usuarios</div>
+      <div style={{ color:C.textMd, fontSize:14, marginBottom:24 }}>Aprobá o rechazá las solicitudes de acceso al sistema.</div>
+
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
+        {[["pending","Pendientes",C.amber],["approved","Aprobados",C.green],["rejected","Rechazados",C.red]].map(([k,l,color])=>(
+          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
+            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
+            <div style={{ fontSize:26, fontWeight:800, color, marginTop:5 }}>{counts[k]}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading && <div style={{ color:C.textSm, textAlign:"center", padding:40 }}>Cargando usuarios…</div>}
+
+      {!loading && users.length === 0 && (
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:40, textAlign:"center", color:C.textSm }}>
+          No hay solicitudes de acceso aún.
+        </div>
+      )}
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {users.map(u => {
+          const sc = STATUS_CFG[u.status] || STATUS_CFG.pending;
+          return (
+            <div key={u.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px", display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
+              {/* Avatar */}
+              <div style={{ width:46, height:46, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:18, color:"#fff", flexShrink:0 }}>
+                {(u.name||"?").charAt(0).toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div style={{ flex:1, minWidth:160 }}>
+                <div style={{ fontWeight:700, fontSize:15 }}>{u.name || "Sin nombre"}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>✉️ {u.email}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:1 }}>📱 {u.phone || "Sin teléfono"}</div>
+                <div style={{ fontSize:11, color:C.textSm, marginTop:1 }}>
+                  {u.created_at ? `Solicitó el ${new Date(u.created_at).toLocaleDateString("es-CR")}` : ""}
+                </div>
+              </div>
+
+              {/* Status */}
+              <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+
+              {/* Actions */}
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                {u.status !== "approved" && (
+                  <button onClick={()=>updateStatus(u.id,"approved")} style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.green}44`, background:`${C.green}18`, color:C.green, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    ✅ Aprobar
+                  </button>
+                )}
+                {u.status !== "rejected" && (
+                  <button onClick={()=>updateStatus(u.id,"rejected")} style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.red}44`, background:`${C.red}18`, color:C.red, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    ❌ Rechazar
+                  </button>
+                )}
+                {u.status === "approved" && (
+                  <button onClick={()=>updateStatus(u.id,"pending")} style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.amber}44`, background:`${C.amber}18`, color:C.amber, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+                    ⏸ Suspender
+                  </button>
+                )}
+                <button onClick={()=>deleteUser(u.id)} style={{ padding:"8px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSm, fontSize:13, cursor:"pointer" }}>
+                  🗑
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Refresh button */}
+      <button onClick={loadUsers} style={{ marginTop:20, padding:"10px 20px", borderRadius:9, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, cursor:"pointer", fontSize:13 }}>
+        🔄 Actualizar lista
+      </button>
+
+      {/* Toast */}
+      {toast2 && (
+        <div style={{ position:"fixed", bottom:28, right:28, background:toast2.type==="ok"?C.green:C.red, color:"#fff", borderRadius:10, padding:"12px 20px", fontWeight:600, fontSize:14, zIndex:9999 }}>
+          {toast2.msg}
+        </div>
+      )}
     </div>
   );
 }
