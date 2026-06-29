@@ -6,41 +6,78 @@ import { useState, useEffect, useCallback, useRef } from "react";
 const SB_URL = "https://zeruqsdmbzwgrxkqdikc.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplcnVxc2RtYnp3Z3J4a3FkaWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MDk1NTksImV4cCI6MjA5ODA4NTU1OX0.mtCPiSxtlekVeeAAVpEzCgiv0jZ-KjQrPWKevnGSCzY";
 
+/* ── Auth helpers ── */
+const auth = {
+  async signUp(email, password) {
+    const r = await fetch(`${SB_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    return r.json();
+  },
+  async signIn(email, password) {
+    const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    return r.json();
+  },
+  async signOut(token) {
+    await fetch(`${SB_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${token}` }
+    });
+  },
+  async getUser(token) {
+    const r = await fetch(`${SB_URL}/auth/v1/user`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${token}` }
+    });
+    return r.ok ? r.json() : null;
+  }
+};
+
 const sb = {
-  async get(table) {
+  async get(table, token) {
+    const tk = token || localStorage.getItem("tac_token") || SB_KEY;
     const r = await fetch(`${SB_URL}/rest/v1/${table}?order=created_at.asc`, {
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" }
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json" }
     });
     return r.ok ? r.json() : [];
   },
   async insert(table, row) {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
     const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
       method: "POST",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify(row)
     });
     return r.json();
   },
   async update(table, id, patch) {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
     const r = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`, {
       method: "PATCH",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify(patch)
     });
     return r.json();
   },
   async upsert(table, row) {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
     const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
       method: "POST",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify(row)
     });
     return r.json();
   },
   async delete(table, id) {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
     await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`, {
       method: "DELETE",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}` }
     });
   }
 };
@@ -227,6 +264,44 @@ const GROUPS = {
    ROOT APP
 ═══════════════════════════════════════════════════ */
 export default function App() {
+  const [session, setSession] = useState(null);   // {token, email}
+  const [authChecked, setAuthChecked] = useState(false);
+
+  /* ── Check existing session on mount ── */
+  useEffect(() => {
+    const token = localStorage.getItem("tac_token");
+    const email = localStorage.getItem("tac_email");
+    if (token && email) {
+      auth.getUser(token).then(u => {
+        if (u && u.email) setSession({ token, email: u.email });
+        else { localStorage.removeItem("tac_token"); localStorage.removeItem("tac_email"); }
+        setAuthChecked(true);
+      }).catch(() => setAuthChecked(true));
+    } else {
+      setAuthChecked(true);
+    }
+  }, []);
+
+  const handleLogin = (token, email) => {
+    localStorage.setItem("tac_token", token);
+    localStorage.setItem("tac_email", email);
+    setSession({ token, email });
+  };
+
+  const handleLogout = async () => {
+    if (session?.token) await auth.signOut(session.token).catch(()=>{});
+    localStorage.removeItem("tac_token");
+    localStorage.removeItem("tac_email");
+    setSession(null);
+  };
+
+  if (!authChecked) return <Loader />;
+  if (!session) return <AuthPage onLogin={handleLogin} />;
+
+  return <MainApp session={session} onLogout={handleLogout} />;
+}
+
+function MainApp({ session, onLogout }) {
   const [page, setPage]       = useState("dashboard");
   const [data, setData]       = useState(null);
   const [sideOpen, setSideOpen] = useState(true);
@@ -315,6 +390,10 @@ export default function App() {
             <span style={{ fontWeight:700, fontSize:16 }}>{navItem?.label}</span>
           </div>
           <span style={{ fontSize:12, color:C.textSm }}>{todayLabel()}</span>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginLeft:16 }}>
+            <span style={{ fontSize:12, color:C.textSm, background:C.card, border:`1px solid ${C.border}`, borderRadius:20, padding:"4px 12px" }}>👤 {session.email}</span>
+            <button onClick={onLogout} style={{ fontSize:12, color:C.red, background:"none", border:`1px solid ${C.red}44`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontWeight:600 }}>Salir</button>
+          </div>
         </div>
 
         {/* DB status banner */}
@@ -2477,4 +2556,126 @@ function Spinner() {
   return <span style={{ display:"inline-block", width:14, height:14, border:"2px solid #ffffff44", borderTop:"2px solid #fff", borderRadius:"50%", animation:"spin .7s linear infinite" }}>
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
   </span>;
+}
+
+/* ═══════════════════════════════════════════════════
+   AUTH PAGE — Login / Registro
+═══════════════════════════════════════════════════ */
+function AuthPage({ onLogin }) {
+  const [mode,     setMode]     = useState("login"); // "login" | "register"
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+  const [success,  setSuccess]  = useState("");
+
+  const handleSubmit = async () => {
+    setError(""); setSuccess("");
+    if (!email.trim() || !password.trim()) { setError("Ingresá tu correo y contraseña."); return; }
+    if (mode === "register" && password !== confirm) { setError("Las contraseñas no coinciden."); return; }
+    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+
+    setLoading(true);
+    try {
+      if (mode === "register") {
+        const res = await auth.signUp(email.trim(), password);
+        if (res.error) { setError(res.error.message || "Error al registrarse."); }
+        else if (res.user || res.id) {
+          setSuccess("¡Cuenta creada! Revisá tu correo para confirmar y luego iniciá sesión.");
+          setMode("login"); setPassword(""); setConfirm("");
+        } else { setError("Error al crear la cuenta. Intentá de nuevo."); }
+      } else {
+        const res = await auth.signIn(email.trim(), password);
+        if (res.error || !res.access_token) {
+          setError(res.error?.message || "Correo o contraseña incorrectos.");
+        } else {
+          onLogin(res.access_token, res.user?.email || email.trim());
+        }
+      }
+    } catch(e) {
+      setError("Error de conexión. Verificá tu internet.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+
+        {/* Logo */}
+        <div style={{ textAlign:"center", marginBottom:36 }}>
+          <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔧</div>
+          <div style={{ fontWeight:800, fontSize:24, color:C.text }}>Tecno AutoAsisten <span style={{ color:C.blueHi }}>CR</span></div>
+          <div style={{ fontSize:13, color:C.textSm, marginTop:4 }}>Sistema de Gestión del Taller</div>
+        </div>
+
+        {/* Card */}
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
+          {/* Tabs */}
+          <div style={{ display:"flex", gap:4, background:C.bg, borderRadius:10, padding:4, marginBottom:24 }}>
+            {[["login","Iniciar sesión"],["register","Crear cuenta"]].map(([m,l])=>(
+              <button key={m} onClick={()=>{ setMode(m); setError(""); setSuccess(""); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"none", cursor:"pointer", background:mode===m?C.blue:"transparent", color:mode===m?"#fff":C.textMd, fontWeight:mode===m?700:400, fontSize:14, transition:"all .15s" }}>{l}</button>
+            ))}
+          </div>
+
+          {/* Fields */}
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Correo electrónico</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+                placeholder="tucorreo@email.com"
+                style={{ ...IS(), padding:"12px 14px", fontSize:15 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e=>setPassword(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+                placeholder="Mínimo 6 caracteres"
+                style={{ ...IS(), padding:"12px 14px", fontSize:15 }}
+              />
+            </div>
+            {mode==="register" && (
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña</label>
+                <input
+                  type="password"
+                  value={confirm}
+                  onChange={e=>setConfirm(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+                  placeholder="Repetí la contraseña"
+                  style={{ ...IS(), padding:"12px 14px", fontSize:15 }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Error / Success */}
+          {error   && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
+          {success && <div style={{ marginTop:14, background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.green }}>✅ {success}</div>}
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}
+          >
+            {loading ? <><Spinner />{mode==="login"?"Entrando…":"Creando cuenta…"}</> : mode==="login" ? "Entrar al sistema →" : "Crear cuenta →"}
+          </button>
+        </div>
+
+        <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:C.textSm }}>
+          🔒 Acceso seguro · Solo personal autorizado
+        </div>
+      </div>
+    </div>
+  );
 }
