@@ -2558,39 +2558,74 @@ function Spinner() {
   </span>;
 }
 
+
 /* ═══════════════════════════════════════════════════
-   AUTH PAGE — Login / Registro
+   AUTH PAGE — Login / Registro con aprobación manual
 ═══════════════════════════════════════════════════ */
 function AuthPage({ onLogin }) {
-  const [mode,     setMode]     = useState("login"); // "login" | "register"
+  const [mode,     setMode]     = useState("login");
+  const [name,     setName]     = useState("");
+  const [phone,    setPhone]    = useState("");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
-  const [success,  setSuccess]  = useState("");
+  const [pending,  setPending]  = useState(false);
 
   const handleSubmit = async () => {
-    setError(""); setSuccess("");
+    setError("");
     if (!email.trim() || !password.trim()) { setError("Ingresá tu correo y contraseña."); return; }
-    if (mode === "register" && password !== confirm) { setError("Las contraseñas no coinciden."); return; }
-    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    if (mode === "register") {
+      if (!name.trim())  { setError("Ingresá tu nombre completo."); return; }
+      if (!phone.trim()) { setError("Ingresá tu número de teléfono."); return; }
+      if (password !== confirm) { setError("Las contraseñas no coinciden."); return; }
+      if (password.length < 6)  { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    }
 
     setLoading(true);
     try {
       if (mode === "register") {
+        // 1. Create auth user
         const res = await auth.signUp(email.trim(), password);
-        if (res.error) { setError(res.error.message || "Error al registrarse."); }
-        else if (res.user || res.id) {
-          setSuccess("¡Cuenta creada! Revisá tu correo para confirmar y luego iniciá sesión.");
-          setMode("login"); setPassword(""); setConfirm("");
-        } else { setError("Error al crear la cuenta. Intentá de nuevo."); }
+        if (res.error) { setError(res.error.message || "Error al registrarse."); setLoading(false); return; }
+
+        // 2. Save profile in pending_users table
+        const userId = res.user?.id || res.id;
+        if (userId) {
+          await fetch(`${SB_URL}/rest/v1/pending_users`, {
+            method: "POST",
+            headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ id: userId, name: name.trim(), phone: phone.trim(), email: email.trim(), status: "pending", created_at: new Date().toISOString() })
+          });
+        }
+        setPending(true);
+
       } else {
+        // LOGIN — check if approved first
         const res = await auth.signIn(email.trim(), password);
         if (res.error || !res.access_token) {
           setError(res.error?.message || "Correo o contraseña incorrectos.");
-        } else {
+          setLoading(false); return;
+        }
+
+        // Check approval status
+        const userId = res.user?.id;
+        const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name`, {
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
+        });
+        const userRows = await checkRes.json();
+        const userRow  = userRows?.[0];
+
+        if (!userRow) {
+          // No pending_users record = admin account, allow in
           onLogin(res.access_token, res.user?.email || email.trim());
+        } else if (userRow.status === "approved") {
+          onLogin(res.access_token, userRow.name || res.user?.email);
+        } else if (userRow.status === "pending") {
+          setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
+        } else {
+          setError("Tu cuenta fue rechazada. Contactá al administrador.");
         }
       }
     } catch(e) {
@@ -2599,81 +2634,84 @@ function AuthPage({ onLogin }) {
     setLoading(false);
   };
 
+  if (pending) return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ maxWidth:420, textAlign:"center" }}>
+        <div style={{ fontSize:64, marginBottom:20 }}>⏳</div>
+        <div style={{ fontWeight:800, fontSize:22, color:C.text, marginBottom:12 }}>Solicitud enviada</div>
+        <div style={{ color:C.textMd, fontSize:15, lineHeight:1.7, background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"20px 24px" }}>
+          Tu cuenta fue creada y está <strong style={{ color:C.amber }}>pendiente de aprobación</strong>.<br/><br/>
+          El administrador del taller revisará tu solicitud y te dará acceso.<br/><br/>
+          <span style={{ fontSize:13, color:C.textSm }}>Si ya fuiste aprobado, intentá iniciar sesión.</span>
+        </div>
+        <button onClick={()=>{ setPending(false); setMode("login"); setPassword(""); setConfirm(""); }} style={{ marginTop:20, padding:"11px 28px", borderRadius:10, border:"none", background:C.blue, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
+          Ir a iniciar sesión
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
-      <div style={{ width:"100%", maxWidth:420 }}>
+      <div style={{ width:"100%", maxWidth:440 }}>
 
         {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:36 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
           <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔧</div>
           <div style={{ fontWeight:800, fontSize:24, color:C.text }}>Tecno AutoAsisten <span style={{ color:C.blueHi }}>CR</span></div>
           <div style={{ fontSize:13, color:C.textSm, marginTop:4 }}>Sistema de Gestión del Taller</div>
         </div>
 
-        {/* Card */}
         <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
           {/* Tabs */}
           <div style={{ display:"flex", gap:4, background:C.bg, borderRadius:10, padding:4, marginBottom:24 }}>
-            {[["login","Iniciar sesión"],["register","Crear cuenta"]].map(([m,l])=>(
-              <button key={m} onClick={()=>{ setMode(m); setError(""); setSuccess(""); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"none", cursor:"pointer", background:mode===m?C.blue:"transparent", color:mode===m?"#fff":C.textMd, fontWeight:mode===m?700:400, fontSize:14, transition:"all .15s" }}>{l}</button>
+            {[["login","Iniciar sesión"],["register","Solicitar acceso"]].map(([m,l])=>(
+              <button key={m} onClick={()=>{ setMode(m); setError(""); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"none", cursor:"pointer", background:mode===m?C.blue:"transparent", color:mode===m?"#fff":C.textMd, fontWeight:mode===m?700:400, fontSize:13, transition:"all .15s" }}>{l}</button>
             ))}
           </div>
 
-          {/* Fields */}
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            {mode==="register" && <>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Nombre completo *</label>
+                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Juan Pérez" style={{...IS(), padding:"12px 14px"}} />
+              </div>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Teléfono *</label>
+                <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="8800-0000" style={{...IS(), padding:"12px 14px"}} />
+              </div>
+            </>}
             <div>
-              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Correo electrónico</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e=>setEmail(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
-                placeholder="tucorreo@email.com"
-                style={{ ...IS(), padding:"12px 14px", fontSize:15 }}
-              />
+              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Correo electrónico *</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="tucorreo@email.com" style={{...IS(), padding:"12px 14px"}} />
             </div>
             <div>
-              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Contraseña</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e=>setPassword(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
-                placeholder="Mínimo 6 caracteres"
-                style={{ ...IS(), padding:"12px 14px", fontSize:15 }}
-              />
+              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Contraseña *</label>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Mínimo 6 caracteres" style={{...IS(), padding:"12px 14px"}} />
             </div>
             {mode==="register" && (
               <div>
-                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña</label>
-                <input
-                  type="password"
-                  value={confirm}
-                  onChange={e=>setConfirm(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
-                  placeholder="Repetí la contraseña"
-                  style={{ ...IS(), padding:"12px 14px", fontSize:15 }}
-                />
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña *</label>
+                <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" style={{...IS(), padding:"12px 14px"}} />
               </div>
             )}
           </div>
 
-          {/* Error / Success */}
-          {error   && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
-          {success && <div style={{ marginTop:14, background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.green }}>✅ {success}</div>}
+          {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
 
-          {/* Submit */}
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}
-          >
-            {loading ? <><Spinner />{mode==="login"?"Entrando…":"Creando cuenta…"}</> : mode==="login" ? "Entrar al sistema →" : "Crear cuenta →"}
+          {mode==="register" && (
+            <div style={{ marginTop:14, background:`${C.amber}11`, border:`1px solid ${C.amber}33`, borderRadius:8, padding:"10px 14px", fontSize:12, color:C.amber }}>
+              ⚠️ Tu cuenta será revisada por el administrador antes de activarse.
+            </div>
+          )}
+
+          <button onClick={handleSubmit} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+            {loading ? <><Spinner />{mode==="login"?"Entrando…":"Enviando solicitud…"}</> : mode==="login" ? "Entrar al sistema →" : "Enviar solicitud →"}
           </button>
         </div>
 
         <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:C.textSm }}>
-          🔒 Acceso seguro · Solo personal autorizado
+          🔒 Acceso controlado · Solo personal autorizado por el taller
         </div>
       </div>
     </div>
