@@ -198,6 +198,43 @@ const SERVICES_CAT = [
   { id:"timing",    name:"Cambio de banda de tiempo",   price:80000, cat:"Motor" },
 ];
 
+// Horario del taller: Lun-Vie 4pm-10pm, Sáb 7am-5pm, Dom cerrado
+const SCHEDULE = {
+  weekday: { start: 16, end: 22 },  // Lun(1)-Vie(5): 16:00 a 22:00
+  saturday:{ start: 7,  end: 17 },  // Sáb(6): 7:00 a 17:00
+};
+
+function getDayOfWeek(dateStr) {
+  // dateStr "YYYY-MM-DD" -> 0=domingo,1=lunes,...6=sábado
+  const [y,m,d] = dateStr.split("-").map(Number);
+  return new Date(y, m-1, d).getDay();
+}
+
+function isWorkingDay(dateStr) {
+  if (!dateStr) return false;
+  const dow = getDayOfWeek(dateStr);
+  return dow !== 0; // cualquier día menos domingo
+}
+
+function getHoursForDate(dateStr) {
+  if (!dateStr) return [];
+  const dow = getDayOfWeek(dateStr);
+  if (dow === 0) return []; // domingo cerrado
+  const range = dow === 6 ? SCHEDULE.saturday : SCHEDULE.weekday;
+  const slots = [];
+  for (let h = range.start; h < range.end; h++) {
+    slots.push(`${h}:00`);
+    if (h < range.end - 1 || range.end % 1 !== 0) slots.push(`${h}:30`);
+  }
+  // trim last slot if it would equal end time exactly without room
+  return slots.filter(s => {
+    const [hh,mm] = s.split(":").map(Number);
+    return hh < range.end;
+  });
+}
+
+const SCHEDULE_LABEL = "Lun-Vie 4:00pm-10:00pm · Sáb 7:00am-5:00pm · Dom cerrado";
+
 const HOURS = ["8:00","8:30","9:00","9:30","10:00","10:30","11:00","11:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"];
 
 const SEED_APPTS = [
@@ -951,7 +988,7 @@ function ApptModal({ item, data, onSave, onClose }) {
         <Field label="Fecha"><input type="date" value={f.date} min={today()} onChange={e=>set("date",e.target.value)} style={IS()} /></Field>
         <Field label="Hora">
           <select value={f.hour} onChange={e=>set("hour",e.target.value)} style={IS()}>
-            {HOURS.map(h=><option key={h} value={h}>{h}</option>)}
+            {(getHoursForDate(f.date).length ? getHoursForDate(f.date) : HOURS).map(h=><option key={h} value={h}>{h}</option>)}
           </select>
         </Field>
         <Field label="Estado">
@@ -3039,7 +3076,7 @@ function ClientPortal({ session, onLogout }) {
   const [loading,    setLoading]    = useState(true);
 
   // New appointment form
-  const [apptForm,   setApptForm]   = useState({ vehicleId:"", serviceId:"diag", date:today(), hour:"9:00", notes:"" });
+  const [apptForm,   setApptForm]   = useState({ vehicleId:"", serviceId:"diag", date:today(), hour:getHoursForDate(today())[0]||"", notes:"" });
   const [apptDone,   setApptDone]   = useState(false);
   const [apptLoading,setApptLoading]= useState(false);
   const [workers,    setWorkers]    = useState([]);
@@ -3219,6 +3256,9 @@ function ClientPortal({ session, onLogout }) {
                     ✅ ¡Cita agendada! El taller confirmará pronto.
                   </div>
                 )}
+                <div style={{ background:`${C.blue}11`, border:`1px solid ${C.blue}33`, borderRadius:8, padding:"8px 14px", marginBottom:14, fontSize:12, color:C.blueHi }}>
+                  🕐 Horario de atención: {SCHEDULE_LABEL}
+                </div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
                   <Field label="Vehículo">
                     <select value={apptForm.vehicleId} onChange={e=>setApptForm(f=>({...f,vehicleId:e.target.value}))} style={IS()}>
@@ -3231,11 +3271,20 @@ function ClientPortal({ session, onLogout }) {
                     </select>
                   </Field>
                   <Field label="Fecha">
-                    <input type="date" value={apptForm.date} min={today()} onChange={e=>setApptForm(f=>({...f,date:e.target.value}))} style={IS()} />
+                    <input type="date" value={apptForm.date} min={today()} onChange={e=>{
+                      const newDate = e.target.value;
+                      const validHours = getHoursForDate(newDate);
+                      setApptForm(f=>({...f, date:newDate, hour: validHours[0]||""}));
+                    }} style={IS()} />
+                    {apptForm.date && !isWorkingDay(apptForm.date) && (
+                      <div style={{ fontSize:11, color:C.red, marginTop:4 }}>⚠️ Cerrado los domingos. Elegí otro día.</div>
+                    )}
                   </Field>
                   <Field label="Hora">
-                    <select value={apptForm.hour} onChange={e=>setApptForm(f=>({...f,hour:e.target.value}))} style={IS()}>
-                      {HOURS.map(h=><option key={h} value={h}>{h}</option>)}
+                    <select value={apptForm.hour} onChange={e=>setApptForm(f=>({...f,hour:e.target.value}))} style={IS()} disabled={!isWorkingDay(apptForm.date)}>
+                      {getHoursForDate(apptForm.date).length===0
+                        ? <option value="">No disponible</option>
+                        : getHoursForDate(apptForm.date).map(h=><option key={h} value={h}>{h}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -3244,7 +3293,7 @@ function ClientPortal({ session, onLogout }) {
                     <textarea value={apptForm.notes} onChange={e=>setApptForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Describí el problema o lo que necesitás revisar…" style={{...IS(),resize:"vertical"}} />
                   </Field>
                 </div>
-                <button onClick={bookAppointment} disabled={apptLoading} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:apptLoading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:apptLoading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                <button onClick={bookAppointment} disabled={apptLoading || !isWorkingDay(apptForm.date) || !apptForm.hour} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(apptLoading || !isWorkingDay(apptForm.date) || !apptForm.hour)?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:(apptLoading || !isWorkingDay(apptForm.date) || !apptForm.hour)?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
                   {apptLoading ? <><Spinner />Agendando…</> : "📅 Confirmar cita"}
                 </button>
               </div>
