@@ -35,6 +35,22 @@ const auth = {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${token}` }
     });
     return r.ok ? r.json() : null;
+  },
+  async resetPassword(email) {
+    const r = await fetch(`${SB_URL}/auth/v1/recover`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    return r.ok ? {} : r.json();
+  },
+  async updatePassword(token, password) {
+    const r = await fetch(`${SB_URL}/auth/v1/user`, {
+      method: "PUT",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+    return r.json();
   }
 };
 
@@ -278,9 +294,25 @@ const GROUPS = {
 export default function App() {
   const [session, setSession] = useState(null);   // {token, email}
   const [authChecked, setAuthChecked] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState(null);
+
+  /* ── Check for password recovery link in URL ── */
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=recovery")) {
+      const params = new URLSearchParams(hash.replace("#", "?"));
+      const at = params.get("access_token");
+      if (at) {
+        setRecoveryToken(at);
+        setAuthChecked(true);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   /* ── Check existing session on mount ── */
   useEffect(() => {
+    if (recoveryToken) return;
     const token = localStorage.getItem("tac_token");
     const email = localStorage.getItem("tac_email");
     if (token && email) {
@@ -309,6 +341,7 @@ export default function App() {
     setSession(null);
   };
 
+  if (recoveryToken) return <ResetPasswordPage token={recoveryToken} onDone={()=>{ setRecoveryToken(null); }} />;
   if (!authChecked) return <Loader />;
   if (!session) return <AuthPage onLogin={handleLogin} />;
   if (session.role === "client") return <ClientPortal session={session} onLogout={handleLogout} />;
@@ -2632,7 +2665,7 @@ function Spinner() {
    AUTH PAGE — Login / Registro con aprobación manual
 ═══════════════════════════════════════════════════ */
 function AuthPage({ onLogin }) {
-  const [mode,     setMode]     = useState("login");
+  const [mode,     setMode]     = useState("login"); // "login" | "register" | "forgot"
   const [name,     setName]     = useState("");
   const [phone,    setPhone]    = useState("");
   const [email,    setEmail]    = useState("");
@@ -2641,6 +2674,20 @@ function AuthPage({ onLogin }) {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
   const [pending,  setPending]  = useState(false);
+  const [resetSent,setResetSent]= useState(false);
+
+  const handleForgotPassword = async () => {
+    setError("");
+    if (!email.trim()) { setError("Ingresá tu correo electrónico."); return; }
+    setLoading(true);
+    try {
+      await auth.resetPassword(email.trim());
+      setResetSent(true);
+    } catch(e) {
+      setError("Error de conexión. Intentá de nuevo.");
+    }
+    setLoading(false);
+  };
 
   const handleSubmit = async () => {
     setError("");
@@ -2720,6 +2767,47 @@ function AuthPage({ onLogin }) {
     </div>
   );
 
+  if (mode === "forgot") return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔑</div>
+          <div style={{ fontWeight:800, fontSize:22, color:C.text }}>Recuperar contraseña</div>
+          <div style={{ fontSize:13, color:C.textSm, marginTop:6 }}>Te enviaremos un enlace a tu correo para restablecerla</div>
+        </div>
+
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
+          {resetSent ? (
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontSize:48, marginBottom:14 }}>📩</div>
+              <div style={{ color:C.green, fontWeight:700, fontSize:16, marginBottom:8 }}>¡Correo enviado!</div>
+              <div style={{ color:C.textMd, fontSize:14, lineHeight:1.6 }}>
+                Revisá tu bandeja de entrada (y spam) en <strong style={{color:C.text}}>{email}</strong>. Seguí el enlace para crear una nueva contraseña.
+              </div>
+              <button onClick={()=>{ setMode("login"); setResetSent(false); setEmail(""); }} style={{ marginTop:20, width:"100%", padding:"12px", borderRadius:10, border:"none", background:C.blue, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                Volver a iniciar sesión
+              </button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Correo electrónico</label>
+                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleForgotPassword()} placeholder="tucorreo@email.com" style={{...IS(), padding:"12px 14px"}} />
+              </div>
+              {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
+              <button onClick={handleForgotPassword} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                {loading ? <><Spinner />Enviando…</> : "Enviar enlace de recuperación →"}
+              </button>
+              <button onClick={()=>{ setMode("login"); setError(""); }} style={{ marginTop:14, width:"100%", padding:"10px", borderRadius:10, border:"none", background:"transparent", color:C.textMd, fontSize:13, cursor:"pointer" }}>
+                ← Volver a iniciar sesión
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
       <div style={{ width:"100%", maxWidth:440 }}>
@@ -2777,6 +2865,12 @@ function AuthPage({ onLogin }) {
           <button onClick={handleSubmit} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
             {loading ? <><Spinner />{mode==="login"?"Entrando…":"Enviando solicitud…"}</> : mode==="login" ? "Entrar al sistema →" : "Enviar solicitud →"}
           </button>
+
+          {mode==="login" && (
+            <button onClick={()=>{ setMode("forgot"); setError(""); }} style={{ marginTop:14, width:"100%", padding:"6px", background:"none", border:"none", color:C.blueHi, fontSize:13, cursor:"pointer", textAlign:"center" }}>
+              ¿Olvidaste tu contraseña?
+            </button>
+          )}
         </div>
 
         <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:C.textSm }}>
@@ -3517,5 +3611,72 @@ function QuoteModal({ item, data, onSave, onClose }) {
 
       <ModalActions onSave={()=>onSave({ ...f, total: total + (+f.manualAdjust||0), status: "quoted" })} onClose={onClose} />
     </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   RESET PASSWORD PAGE — desde link de recuperación
+═══════════════════════════════════════════════════ */
+function ResetPasswordPage({ token, onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+  const [done,     setDone]     = useState(false);
+
+  const handleSubmit = async () => {
+    setError("");
+    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    if (password !== confirm) { setError("Las contraseñas no coinciden."); return; }
+    setLoading(true);
+    try {
+      const res = await auth.updatePassword(token, password);
+      if (res.error) { setError(res.error.message || "Error al actualizar la contraseña."); }
+      else { setDone(true); }
+    } catch(e) {
+      setError("Error de conexión. Intentá de nuevo.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔑</div>
+          <div style={{ fontWeight:800, fontSize:22, color:C.text }}>Crear nueva contraseña</div>
+        </div>
+
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
+          {done ? (
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontSize:48, marginBottom:14 }}>✅</div>
+              <div style={{ color:C.green, fontWeight:700, fontSize:16, marginBottom:10 }}>¡Contraseña actualizada!</div>
+              <div style={{ color:C.textMd, fontSize:14, marginBottom:20 }}>Ya podés iniciar sesión con tu nueva contraseña.</div>
+              <button onClick={onDone} style={{ width:"100%", padding:"12px", borderRadius:10, border:"none", background:C.blue, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                Ir a iniciar sesión
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Nueva contraseña</label>
+                  <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" style={{...IS(), padding:"12px 14px"}} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña</label>
+                  <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" style={{...IS(), padding:"12px 14px"}} />
+                </div>
+              </div>
+              {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
+              <button onClick={handleSubmit} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                {loading ? <><Spinner />Guardando…</> : "Guardar nueva contraseña →"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
