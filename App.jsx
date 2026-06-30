@@ -93,13 +93,17 @@ const TABLE = {
   inventory:    { table:"inventory",    toDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplier_id:r.supplierId||null, qty:r.qty||0, min_qty:r.minQty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplierId:r.supplier_id||"", qty:r.qty||0, minQty:r.min_qty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }) },
   accounting:   { table:"accounting",   toDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }) },
   library:      { table:"library",      toDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", upload_date:r.uploadDate||"", file_size:r.fileSize||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", uploadDate:r.upload_date||"", fileSize:r.file_size||"", notes:r.notes||"" }) },
+  services:     { table:"services",     toDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }) },
+  subcontracts: { table:"subcontracts", toDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", lead_time:r.leadTime||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", leadTime:r.lead_time||"", notes:r.notes||"" }) },
 };
 
 async function loadAll() {
-  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library] = await Promise.all([
+  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts] = await Promise.all([
     sb.get("clients"), sb.get("vehicles"), sb.get("workers"), sb.get("appointments"),
-    sb.get("orders"), sb.get("suppliers"), sb.get("inventory"), sb.get("accounting"), sb.get("library")
+    sb.get("orders"), sb.get("suppliers"), sb.get("inventory"), sb.get("accounting"), sb.get("library"),
+    sb.get("services"), sb.get("subcontracts")
   ]);
+  const loadedServices = (services||[]).map(TABLE.services.fromDb);
   return {
     clients:      (clients||[]).map(TABLE.clients.fromDb),
     vehicles:     (vehicles||[]).map(TABLE.vehicles.fromDb),
@@ -110,6 +114,8 @@ async function loadAll() {
     inventory:    (inventory||[]).map(TABLE.inventory.fromDb),
     accounting:   (accounting||[]).map(TABLE.accounting.fromDb),
     library:      (library||[]).map(TABLE.library.fromDb),
+    services:     loadedServices.length ? loadedServices : SERVICES_CAT,
+    subcontracts: (subcontracts||[]).map(TABLE.subcontracts.fromDb),
   };
 }
 
@@ -251,6 +257,7 @@ const NAV = [
   { id:"accounting",  icon:"💰", label:"Contabilidad",       group:"gestión" },
   { id:"library",     icon:"📚", label:"Biblioteca",         group:"gestión" },
   { id:"users",       icon:"🔐", label:"Usuarios",          group:"admin" },
+  { id:"subcontracts",icon:"🤝", label:"Subcontrataciones", group:"gestión" },
 ];
 
 const GROUPS = {
@@ -336,6 +343,7 @@ function MainApp({ session, onLogout }) {
             ...SEED_INVENTORY.map(r => sb.upsert("inventory", TABLE.inventory.toDb(r))),
             ...SEED_ACCOUNTING.map(r => sb.upsert("accounting", TABLE.accounting.toDb(r))),
             ...SEED_LIBRARY.map(r => sb.upsert("library", TABLE.library.toDb(r))),
+            ...SERVICES_CAT.map(r => sb.upsert("services", TABLE.services.toDb(r))),
           ]);
           const seeded = await loadAll();
           setData(seeded);
@@ -347,7 +355,7 @@ function MainApp({ session, onLogout }) {
         console.error("Supabase error:", e);
         setDbReady(false);
         // Fallback to seed data if DB unreachable
-        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY });
+        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[] });
       }
     })();
   }, []);
@@ -420,7 +428,7 @@ function MainApp({ session, onLogout }) {
           : page==="vehicles"    ? <VehiclesPage   data={data} save={save} toast={showToast} />
           : page==="appointments"? <ApptsPage      data={data} save={save} toast={showToast} />
           : page==="orders"      ? <OrdersPage     data={data} save={save} toast={showToast} />
-          : page==="services"    ? <ServicesPage />
+          : page==="services"    ? <ServicesPage data={data} save={save} toast={showToast} />
           : page==="workers"     ? <WorkersPage    data={data} save={save} toast={showToast} />
           : page==="metrics"     ? <MetricsPage    data={data} />
           : page==="inventory"   ? <InventoryPage  data={data} save={save} toast={showToast} />
@@ -432,6 +440,7 @@ function MainApp({ session, onLogout }) {
           : page==="ai_quote"    ? <AIQuotePage    data={data} />
           : page==="ai_manual"   ? <AIManualPage   data={data} />
           : page==="users"       ? <UsersPage      session={session} />
+          : page==="subcontracts"? <SubcontractsPage data={data} save={save} toast={showToast} />
           : null}
         </div>
       </div>
@@ -563,7 +572,7 @@ function Dashboard({ data, setPage }) {
           {upcoming.map(a=>{
             const client = data.clients.find(c=>c.id===a.clientId);
             const vehicle= data.vehicles.find(v=>v.id===a.vehicleId);
-            const svc    = SERVICES_CAT.find(s=>s.id===a.serviceId);
+            const svc    = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
             const sc     = STATUS_COLORS[a.status];
             return (
               <div key={a.id} style={{ display:"flex", gap:14, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
@@ -842,7 +851,7 @@ function ApptsPage({ data, save, toast }) {
         {filtered.map(a=>{
           const client  = data.clients.find(c=>c.id===a.clientId);
           const vehicle = data.vehicles.find(v=>v.id===a.vehicleId);
-          const svc     = SERVICES_CAT.find(s=>s.id===a.serviceId);
+          const svc     = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
           const sc      = STATUS_COLORS[a.status];
           return (
             <div key={a.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
@@ -894,7 +903,7 @@ function ApptModal({ item, data, onSave, onClose }) {
         </Field>
         <Field label="Servicio">
           <select value={f.serviceId} onChange={e=>set("serviceId",e.target.value)} style={IS()}>
-            {SERVICES_CAT.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            {(data.services||SERVICES_CAT).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
         <Field label="Mecánico">
@@ -938,7 +947,7 @@ function OrdersPage({ data, save, toast }) {
   const filtered = data.orders.filter(o=>filter==="all"||o.status===filter);
 
   const upsert = (item) => {
-    const total = item.services.reduce((s,sid)=>s+(SERVICES_CAT.find(x=>x.id===sid)?.price||0),0)
+    const total = item.services.reduce((s,sid)=>s+((data.services||SERVICES_CAT).find(x=>x.id===sid)?.price||0),0)
                 + item.parts.reduce((s,p)=>s+(p.price*p.qty),0);
     const final = { ...item, total };
     const list  = item.id ? data.orders.map(o=>o.id===item.id?final:o) : [...data.orders,{...final,id:uid()}];
@@ -972,7 +981,7 @@ function OrdersPage({ data, save, toast }) {
                 <div style={{ flex:1, minWidth:200 }}>
                   <div style={{ fontWeight:700, fontSize:15 }}>{client?.name||"—"} <span style={{ fontWeight:400, color:C.textSm, fontSize:13 }}>· {vehicle?.plate}</span></div>
                   <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.mechanic} · {fmtDate(o.date)}</div>
-                  <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.services.map(sid=>SERVICES_CAT.find(s=>s.id===sid)?.name).join(", ")}</div>
+                  <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).join(", ")}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(o.total)}</div>
@@ -1006,7 +1015,7 @@ function OrderModal({ item, data, onSave, onClose }) {
   const setPart = (i,k,v) => setF(p=>{ const parts=[...p.parts]; parts[i]={...parts[i],[k]:v}; return {...p,parts}; });
   const remPart = (i) => setF(p=>({ ...p, parts:p.parts.filter((_,ii)=>ii!==i) }));
   const clientVehicles = data.vehicles.filter(v=>v.clientId===f.clientId);
-  const preview = f.services.reduce((s,sid)=>s+(SERVICES_CAT.find(x=>x.id===sid)?.price||0),0) + f.parts.reduce((s,p)=>s+(+p.price * +p.qty),0);
+  const preview = f.services.reduce((s,sid)=>s+((data.services||SERVICES_CAT).find(x=>x.id===sid)?.price||0),0) + f.parts.reduce((s,p)=>s+(+p.price * +p.qty),0);
 
   return (
     <Modal title={item.id?"Editar orden":"Nueva orden de trabajo"} onClose={onClose} wide>
@@ -1031,7 +1040,7 @@ function OrderModal({ item, data, onSave, onClose }) {
 
       <Field label="Servicios incluidos">
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:4 }}>
-          {SERVICES_CAT.map(s=>{
+          {(data.services||SERVICES_CAT).map(s=>{
             const sel = f.services.includes(s.id);
             return <button key={s.id} onClick={()=>toggleSvc(s.id)} style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${sel?C.blueHi:C.border}`, background:sel?`${C.blue}22`:"transparent", color:sel?C.blueHi:C.textMd, cursor:"pointer", fontSize:12, fontWeight:sel?700:400 }}>{s.name}</button>;
           })}
@@ -1077,7 +1086,7 @@ function OrderDetail({ order, data, onClose }) {
       </div>
       <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:6 }}>SERVICIOS</div>
-        {order.services.map(sid=>{ const s=SERVICES_CAT.find(x=>x.id===sid); return s?<div key={sid} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}`, fontSize:13 }}><span>{s.name}</span><span style={{ color:C.green }}>{fmtCRC(s.price)}</span></div>:null; })}
+        {order.services.map(sid=>{ const s=(data.services||SERVICES_CAT).find(x=>x.id===sid); return s?<div key={sid} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}`, fontSize:13 }}><span>{s.name}</span><span style={{ color:C.green }}>{fmtCRC(s.price)}</span></div>:null; })}
       </div>
       {order.parts.length>0 && <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:6 }}>REPUESTOS</div>
@@ -1098,25 +1107,75 @@ function OrderDetail({ order, data, onClose }) {
 /* ═══════════════════════════════════════════════════
    SERVICES PAGE (catalogue)
 ═══════════════════════════════════════════════════ */
-function ServicesPage() {
-  const cats = [...new Set(SERVICES_CAT.map(s=>s.cat))];
+function ServicesPage({ data, save, toast }) {
+  const [modal, setModal] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const services = data.services || SERVICES_CAT;
+  const cats = [...new Set(services.map(s=>s.cat))];
+
+  const upsert = (item) => {
+    const list = item.id
+      ? services.map(s=>s.id===item.id?item:s)
+      : [...services, { ...item, id:uid() }];
+    save({ services:list });
+    toast(item.id?"Servicio actualizado":"Servicio agregado");
+    setModal(null);
+  };
+
+  const del = (id) => {
+    save({ services: services.filter(s=>s.id!==id) });
+    toast("Servicio eliminado","err");
+    setDelId(null);
+  };
+
+  const CATS = ["Diagnóstico","Mantenimiento","Seguridad","Confort","Eléctrico","Motor","Suspensión","Carrocería","Otros"];
+
   return (
     <div>
-      <div style={{ fontWeight:700, fontSize:18, marginBottom:20 }}>Catálogo de servicios</div>
+      <PageHeader title="Catálogo de servicios" onNew={()=>setModal({mode:"new",item:{name:"",price:0,cat:"Mantenimiento"}})} newLabel="+ Nuevo servicio" />
+      {services.length===0 && <Empty msg="No hay servicios registrados" />}
       {cats.map(cat=>(
         <div key={cat} style={{ marginBottom:24 }}>
           <div style={{ fontSize:12, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>{cat}</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 }}>
-            {SERVICES_CAT.filter(s=>s.cat===cat).map(s=>(
-              <div key={s.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:12 }}>
+            {services.filter(s=>s.cat===cat).map(s=>(
+              <div key={s.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
                 <span style={{ fontSize:14, fontWeight:600 }}>{s.name}</span>
-                <span style={{ fontWeight:800, color:C.green }}>{fmtCRC(s.price)}</span>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontWeight:800, color:C.green }}>{fmtCRC(s.price)}</span>
+                  <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:s})} />
+                  <IBtn icon="🗑" red onClick={()=>setDelId(s.id)} />
+                </div>
               </div>
             ))}
           </div>
         </div>
       ))}
+
+      {modal && <ServiceModal item={modal.item} cats={CATS} onSave={upsert} onClose={()=>setModal(null)} />}
+      {delId && <Confirm msg="¿Eliminar este servicio del catálogo?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
     </div>
+  );
+}
+
+function ServiceModal({ item, cats, onSave, onClose }) {
+  const [f, setF] = useState(item);
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  return (
+    <Modal title={item.id?"Editar servicio":"Nuevo servicio"} onClose={onClose}>
+      <Field label="Nombre del servicio"><input value={f.name} onChange={e=>set("name",e.target.value)} style={IS()} placeholder="Cambio de aceite" /></Field>
+      <div style={{ marginTop:14 }}>
+        <Grid2>
+          <Field label="Precio (₡)"><input type="number" value={f.price} onChange={e=>set("price",+e.target.value)} style={IS()} /></Field>
+          <Field label="Categoría">
+            <select value={f.cat} onChange={e=>set("cat",e.target.value)} style={IS()}>
+              {cats.map(c=><option key={c}>{c}</option>)}
+            </select>
+          </Field>
+        </Grid2>
+      </div>
+      <ModalActions onSave={()=>onSave(f)} onClose={onClose} />
+    </Modal>
   );
 }
 
@@ -1225,7 +1284,7 @@ function MetricsPage({ data }) {
   const svcCount = {};
   appointments.forEach(a=>{ svcCount[a.serviceId]=(svcCount[a.serviceId]||0)+1; });
   const topSvcs = Object.entries(svcCount).sort((a,b)=>b[1]-a[1]).slice(0,5)
-    .map(([id,c])=>({ name:SERVICES_CAT.find(s=>s.id===id)?.name||id, c }));
+    .map(([id,c])=>({ name:(data.services||SERVICES_CAT).find(s=>s.id===id)?.name||id, c }));
   const maxSvc = Math.max(...topSvcs.map(x=>x.c),1);
 
   // Citas por día últimos 14 días
@@ -2003,7 +2062,7 @@ function IntakePage({ data, save, toast }) {
       newVehicles.push({ ...vForm, id: vehicleId, clientId });
     }
 
-    const total = oForm.serviceIds.reduce((s,sid) => s + (SERVICES_CAT.find(x=>x.id===sid)?.price||0), 0)
+    const total = oForm.serviceIds.reduce((s,sid) => s + ((data.services||SERVICES_CAT).find(x=>x.id===sid)?.price||0), 0)
                 + oForm.parts.reduce((s,p) => s + (+p.price * +p.qty), 0);
 
     const orderId = uid();
@@ -2163,7 +2222,7 @@ function IntakePage({ data, save, toast }) {
             <div style={{ fontWeight:700, fontSize:16, marginBottom:20 }}>🔧 Servicios y mecánico</div>
             <Field label="Servicios a realizar *">
               <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
-                {SERVICES_CAT.map(s=>{
+                {(data.services||SERVICES_CAT).map(s=>{
                   const sel = oForm.serviceIds.includes(s.id);
                   return (
                     <button key={s.id} onClick={()=>toggleService(s.id)} style={{ padding:"8px 14px", borderRadius:8, border:`1px solid ${sel?C.blueHi:C.border}`, background:sel?`${C.blue}22`:"transparent", color:sel?C.blueHi:C.textMd, cursor:"pointer", fontSize:13, fontWeight:sel?700:400 }}>
@@ -2187,7 +2246,7 @@ function IntakePage({ data, save, toast }) {
             {oForm.serviceIds.length>0 && (
               <div style={{ marginTop:16, background:C.bg, borderRadius:10, padding:"12px 16px", display:"flex", justifyContent:"space-between" }}>
                 <span style={{ color:C.textMd, fontSize:14 }}>Total estimado ({oForm.serviceIds.length} servicios)</span>
-                <span style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(oForm.serviceIds.reduce((s,id)=>s+(SERVICES_CAT.find(x=>x.id===id)?.price||0),0))}</span>
+                <span style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(oForm.serviceIds.reduce((s,id)=>s+((data.services||SERVICES_CAT).find(x=>x.id===id)?.price||0),0))}</span>
               </div>
             )}
           </div>
@@ -2218,12 +2277,12 @@ function IntakePage({ data, save, toast }) {
             <div style={{ background:C.bg, borderRadius:10, padding:"16px", marginTop:14 }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:10 }}>Servicios</div>
               {oForm.serviceIds.map(sid=>{
-                const s = SERVICES_CAT.find(x=>x.id===sid);
+                const s = (data.services||SERVICES_CAT).find(x=>x.id===sid);
                 return s ? <div key={sid} style={{ display:"flex", justifyContent:"space-between", fontSize:13, padding:"4px 0", borderBottom:`1px solid ${C.border}` }}><span>{s.name}</span><span style={{ color:C.green }}>{fmtCRC(s.price)}</span></div> : null;
               })}
               <div style={{ display:"flex", justifyContent:"space-between", marginTop:10, fontWeight:800, fontSize:16 }}>
                 <span>Total</span>
-                <span style={{ color:C.green }}>{fmtCRC(oForm.serviceIds.reduce((s,id)=>s+(SERVICES_CAT.find(x=>x.id===id)?.price||0),0))}</span>
+                <span style={{ color:C.green }}>{fmtCRC(oForm.serviceIds.reduce((s,id)=>s+((data.services||SERVICES_CAT).find(x=>x.id===id)?.price||0),0))}</span>
               </div>
             </div>
             <div style={{ marginTop:10, fontSize:13, color:C.textSm }}>Mecánico: {oForm.mechanic} · Fecha: {fmtDate(oForm.date)}</div>
@@ -2347,12 +2406,12 @@ function AIQuotePage({ data }) {
 
   const toggleSvc = (id) => setServices(p=>p.includes(id)?p.filter(s=>s!==id):[...p,id]);
 
-  const total = services.reduce((s,id)=>s+(SERVICES_CAT.find(x=>x.id===id)?.price||0),0);
+  const total = services.reduce((s,id)=>s+((data.services||SERVICES_CAT).find(x=>x.id===id)?.price||0),0);
 
   const run = async () => {
     if (!services.length) return;
     setLoading(true); setResult(null);
-    const svcList = services.map(id=>{ const s=SERVICES_CAT.find(x=>x.id===id); return `- ${s.name}: ${fmtCRC(s.price)}`; }).join("\n");
+    const svcList = services.map(id=>{ const s=(data.services||SERVICES_CAT).find(x=>x.id===id); return `- ${s.name}: ${fmtCRC(s.price)}`; }).join("\n");
     const sys = `Eres un asistente de taller automotriz profesional. Redactas presupuestos claros, amables y profesionales en español para clientes costarricenses. El taller se llama Tecno AutoAsisten CR. Usa un tono cordial pero profesional.`;
     const msg = `Redacta un presupuesto profesional para:\n\nCliente: ${client?.name||"Cliente"}\nVehículo: ${vehicle?`${vehicle.year} ${vehicle.brand} ${vehicle.model} placa ${vehicle.plate}`:"No especificado"}\n\nServicios cotizados:\n${svcList}\n\nTotal: ${fmtCRC(total)}\n\nNotas adicionales: ${extraNotes||"Ninguna"}\n\nIncluye: saludo, descripción de servicios, precio, tiempo estimado, garantía estándar del taller y cierre cordial.`;
     try {
@@ -2384,7 +2443,7 @@ function AIQuotePage({ data }) {
 
         <Field label="Servicios a cotizar *">
           <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
-            {SERVICES_CAT.map(s=>{
+            {(data.services||SERVICES_CAT).map(s=>{
               const sel=services.includes(s.id);
               return <button key={s.id} onClick={()=>toggleSvc(s.id)} style={{ padding:"7px 13px", borderRadius:8, border:`1px solid ${sel?C.green:C.border}`, background:sel?`${C.green}18`:"transparent", color:sel?C.green:C.textMd, cursor:"pointer", fontSize:12, fontWeight:sel?700:400 }}>{s.name} · {fmtCRC(s.price)}</button>;
             })}
@@ -2886,18 +2945,21 @@ function ClientPortal({ session, onLogout }) {
   const [apptDone,   setApptDone]   = useState(false);
   const [apptLoading,setApptLoading]= useState(false);
   const [workers,    setWorkers]    = useState([]);
+  const [services,   setServices]   = useState(SERVICES_CAT);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [cls, vhs, ords, apts, wks] = await Promise.all([
-        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers")
+      const [cls, vhs, ords, apts, wks, svcs] = await Promise.all([
+        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers"), sb.get("services")
       ]);
       const allClients  = (cls||[]).map(TABLE.clients.fromDb);
       const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
       const allOrders   = (ords||[]).map(TABLE.orders.fromDb);
       const allAppts    = (apts||[]).map(TABLE.appointments.fromDb);
       const allWorkers  = (wks||[]).map(TABLE.workers.fromDb);
+      const allServices = (svcs||[]).map(TABLE.services.fromDb);
+      if (allServices.length) setServices(allServices);
 
       // Match client by email or name
       const me = allClients.find(c =>
@@ -2997,7 +3059,7 @@ function ClientPortal({ session, onLogout }) {
             <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis citas</div>
             {appts.length===0 && <Empty msg="No tenés citas registradas" />}
             {[...appts].sort((a,b)=>b.date.localeCompare(a.date)).map(a=>{
-              const svc = SERVICES_CAT.find(s=>s.id===a.serviceId);
+              const svc = services.find(s=>s.id===a.serviceId);
               const sc  = STATUS_COLORS[a.status] || STATUS_COLORS.pending;
               return (
                 <div key={a.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10, display:"flex", gap:14, alignItems:"center" }}>
@@ -3038,7 +3100,7 @@ function ClientPortal({ session, onLogout }) {
                   </Field>
                   <Field label="Servicio">
                     <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={IS()}>
-                      {SERVICES_CAT.map(s=><option key={s.id} value={s.id}>{s.name} · {fmtCRC(s.price)}</option>)}
+                      {services.map(s=><option key={s.id} value={s.id}>{s.name} · {fmtCRC(s.price)}</option>)}
                     </select>
                   </Field>
                   <Field label="Fecha">
@@ -3076,7 +3138,7 @@ function ClientPortal({ session, onLogout }) {
                     <div>
                       <div style={{ fontWeight:700, fontSize:14 }}>{fmtDate(o.date)}</div>
                       <div style={{ fontSize:12, color:C.textSm, marginTop:3 }}>
-                        {o.services.map(sid=>SERVICES_CAT.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
+                        {o.services.map(sid=>services.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
                       </div>
                       {o.mechanic && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>Mecánico: {o.mechanic}</div>}
                       {o.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>💬 {o.notes}</div>}
@@ -3109,5 +3171,92 @@ function ClientPortal({ session, onLogout }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   SUBCONTRACTS PAGE — Servicios tercerizados
+═══════════════════════════════════════════════════ */
+function SubcontractsPage({ data, save, toast }) {
+  const [modal, setModal] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const [search, setSearch] = useState("");
+
+  const subs = data.subcontracts || [];
+  const filtered = subs.filter(s =>
+    !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.provider.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const upsert = (item) => {
+    const list = item.id ? subs.map(s=>s.id===item.id?item:s) : [...subs,{...item,id:uid()}];
+    save({ subcontracts:list });
+    toast(item.id?"Subcontratación actualizada":"Subcontratación agregada");
+    setModal(null);
+  };
+
+  const del = (id) => { save({ subcontracts:subs.filter(s=>s.id!==id) }); toast("Eliminada","err"); setDelId(null); };
+
+  const totalValue = subs.reduce((s,x)=>s+(x.price||0),0);
+
+  return (
+    <div>
+      <PageHeader title={`Subcontrataciones (${subs.length})`} onNew={()=>setModal({mode:"new",item:{name:"",price:0,provider:"",leadTime:"",notes:""}})} newLabel="+ Nueva subcontratación" />
+
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px", marginBottom:18, display:"inline-block" }}>
+        <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Valor total catalogado</div>
+        <div style={{ fontSize:22, fontWeight:800, color:C.amber, marginTop:4 }}>{fmtCRC(totalValue)}</div>
+      </div>
+
+      <SearchBar value={search} onChange={setSearch} placeholder="Buscar por servicio o proveedor…" />
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14, marginTop:16 }}>
+        {filtered.map(s=>(
+          <div key={s.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:15 }}>{s.name}</div>
+                <div style={{ fontSize:12, color:C.blueHi, marginTop:3 }}>🏭 {s.provider || "Sin proveedor"}</div>
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:s})} />
+                <IBtn icon="🗑" red onClick={()=>setDelId(s.id)} />
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:12, marginTop:14, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
+              <Stat label="Precio" value={fmtCRC(s.price)} />
+              <Stat label="Entrega estimada" value={s.leadTime || "—"} />
+            </div>
+            {s.notes && <div style={{ marginTop:10, fontSize:12, color:C.textSm }}>💬 {s.notes}</div>}
+          </div>
+        ))}
+        {filtered.length===0 && <Empty msg="No hay subcontrataciones registradas" />}
+      </div>
+
+      {modal && <SubcontractModal item={modal.item} onSave={upsert} onClose={()=>setModal(null)} />}
+      {delId && <Confirm msg="¿Eliminar esta subcontratación?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+    </div>
+  );
+}
+
+function SubcontractModal({ item, onSave, onClose }) {
+  const [f, setF] = useState(item);
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  return (
+    <Modal title={item.id?"Editar subcontratación":"Nueva subcontratación"} onClose={onClose}>
+      <Field label="Nombre del servicio"><input value={f.name} onChange={e=>set("name",e.target.value)} style={IS()} placeholder="Pintura general, enderezado, polarizado…" /></Field>
+      <div style={{ marginTop:14 }}>
+        <Grid2>
+          <Field label="Precio (₡)"><input type="number" value={f.price} onChange={e=>set("price",+e.target.value)} style={IS()} /></Field>
+          <Field label="Proveedor / Taller"><input value={f.provider} onChange={e=>set("provider",e.target.value)} style={IS()} placeholder="Nombre del taller externo" /></Field>
+        </Grid2>
+      </div>
+      <div style={{ marginTop:14 }}>
+        <Field label="Tiempo estimado de entrega"><input value={f.leadTime} onChange={e=>set("leadTime",e.target.value)} style={IS()} placeholder="3 días, 1 semana…" /></Field>
+      </div>
+      <div style={{ marginTop:14 }}>
+        <Field label="Notas"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      </div>
+      <ModalActions onSave={()=>onSave(f)} onClose={onClose} />
+    </Modal>
   );
 }
