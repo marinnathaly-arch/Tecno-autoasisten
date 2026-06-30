@@ -95,13 +95,14 @@ const TABLE = {
   library:      { table:"library",      toDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", upload_date:r.uploadDate||"", file_size:r.fileSize||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", uploadDate:r.upload_date||"", fileSize:r.file_size||"", notes:r.notes||"" }) },
   services:     { table:"services",     toDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }) },
   subcontracts: { table:"subcontracts", toDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", lead_time:r.leadTime||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", leadTime:r.lead_time||"", notes:r.notes||"" }) },
+  quotes:       { table:"quotes",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId||null, description:r.description||"", status:r.status||"pending", services:r.services||[], total:r.total||0, notes:r.notes||"", created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id||"", description:r.description||"", status:r.status||"pending", services:r.services||[], total:r.total||0, notes:r.notes||"", createdAt:r.created_at||"" }) },
 };
 
 async function loadAll() {
-  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts] = await Promise.all([
+  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes] = await Promise.all([
     sb.get("clients"), sb.get("vehicles"), sb.get("workers"), sb.get("appointments"),
     sb.get("orders"), sb.get("suppliers"), sb.get("inventory"), sb.get("accounting"), sb.get("library"),
-    sb.get("services"), sb.get("subcontracts")
+    sb.get("services"), sb.get("subcontracts"), sb.get("quotes")
   ]);
   const loadedServices = (services||[]).map(TABLE.services.fromDb);
   return {
@@ -116,6 +117,7 @@ async function loadAll() {
     library:      (library||[]).map(TABLE.library.fromDb),
     services:     loadedServices.length ? loadedServices : SERVICES_CAT,
     subcontracts: (subcontracts||[]).map(TABLE.subcontracts.fromDb),
+    quotes:       (quotes||[]).map(TABLE.quotes.fromDb),
   };
 }
 
@@ -258,6 +260,7 @@ const NAV = [
   { id:"library",     icon:"📚", label:"Biblioteca",         group:"gestión" },
   { id:"users",       icon:"🔐", label:"Usuarios",          group:"admin" },
   { id:"subcontracts",icon:"🤝", label:"Subcontrataciones", group:"gestión" },
+  { id:"quotes",      icon:"💬", label:"Cotizaciones",      group:"taller" },
 ];
 
 const GROUPS = {
@@ -355,7 +358,7 @@ function MainApp({ session, onLogout }) {
         console.error("Supabase error:", e);
         setDbReady(false);
         // Fallback to seed data if DB unreachable
-        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[] });
+        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[] });
       }
     })();
   }, []);
@@ -441,6 +444,7 @@ function MainApp({ session, onLogout }) {
           : page==="ai_manual"   ? <AIManualPage   data={data} />
           : page==="users"       ? <UsersPage      session={session} />
           : page==="subcontracts"? <SubcontractsPage data={data} save={save} toast={showToast} />
+          : page==="quotes"      ? <QuotesPage      data={data} save={save} toast={showToast} />
           : null}
         </div>
       </div>
@@ -2946,12 +2950,19 @@ function ClientPortal({ session, onLogout }) {
   const [apptLoading,setApptLoading]= useState(false);
   const [workers,    setWorkers]    = useState([]);
   const [services,   setServices]   = useState(SERVICES_CAT);
+  const [myQuotes,   setMyQuotes]   = useState([]);
+
+  // Quote request form
+  const [quoteDesc,    setQuoteDesc]    = useState("");
+  const [quoteVehicle, setQuoteVehicle] = useState("");
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteDone,    setQuoteDone]    = useState(false);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [cls, vhs, ords, apts, wks, svcs] = await Promise.all([
-        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers"), sb.get("services")
+      const [cls, vhs, ords, apts, wks, svcs, qts] = await Promise.all([
+        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers"), sb.get("services"), sb.get("quotes")
       ]);
       const allClients  = (cls||[]).map(TABLE.clients.fromDb);
       const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
@@ -2959,6 +2970,7 @@ function ClientPortal({ session, onLogout }) {
       const allAppts    = (apts||[]).map(TABLE.appointments.fromDb);
       const allWorkers  = (wks||[]).map(TABLE.workers.fromDb);
       const allServices = (svcs||[]).map(TABLE.services.fromDb);
+      const allQuotes   = (qts||[]).map(TABLE.quotes.fromDb);
       if (allServices.length) setServices(allServices);
 
       // Match client by email or name
@@ -2972,12 +2984,32 @@ function ClientPortal({ session, onLogout }) {
       setVehicles(me ? allVehicles.filter(v=>v.clientId===me.id) : []);
       setOrders(me   ? allOrders.filter(o=>o.clientId===me.id)   : []);
       setAppts(me    ? allAppts.filter(a=>a.clientId===me.id)     : []);
+      setMyQuotes(me ? allQuotes.filter(q=>q.clientId===me.id)    : []);
       setWorkers(allWorkers.filter(w=>w.status==="active"));
-      if (me && allVehicles.filter(v=>v.clientId===me.id).length > 0)
-        setApptForm(f=>({...f, vehicleId: allVehicles.filter(v=>v.clientId===me.id)[0].id }));
+      if (me && allVehicles.filter(v=>v.clientId===me.id).length > 0) {
+        const firstVeh = allVehicles.filter(v=>v.clientId===me.id)[0].id;
+        setApptForm(f=>({...f, vehicleId: firstVeh }));
+        setQuoteVehicle(firstVeh);
+      }
       setLoading(false);
     })();
   }, []);
+
+  const submitQuote = async () => {
+    if (!myClient || !quoteDesc.trim()) return;
+    setQuoteLoading(true);
+    const newQuote = {
+      id: uid(), clientId: myClient.id, vehicleId: quoteVehicle || null,
+      description: quoteDesc.trim(), status: "pending", services: [], total: 0,
+      notes: "", createdAt: new Date().toISOString()
+    };
+    await sb.upsert("quotes", TABLE.quotes.toDb(newQuote));
+    setMyQuotes(prev => [...prev, newQuote]);
+    setQuoteDesc("");
+    setQuoteDone(true);
+    setQuoteLoading(false);
+    setTimeout(()=>setQuoteDone(false), 4000);
+  };
 
   const bookAppointment = async () => {
     if (!myClient) return;
@@ -2999,6 +3031,7 @@ function ClientPortal({ session, onLogout }) {
   const TABS = [
     { id:"appointments", icon:"📅", label:"Mis citas" },
     { id:"book",         icon:"➕", label:"Agendar cita" },
+    { id:"quote",        icon:"💬", label:"Cotizar" },
     { id:"orders",       icon:"📋", label:"Mis órdenes" },
     { id:"vehicles",     icon:"🚗", label:"Mis vehículos" },
   ];
@@ -3120,6 +3153,63 @@ function ClientPortal({ session, onLogout }) {
                 <button onClick={bookAppointment} disabled={apptLoading} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:apptLoading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:apptLoading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
                   {apptLoading ? <><Spinner />Agendando…</> : "📅 Confirmar cita"}
                 </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* COTIZAR */}
+        {tab==="quote" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Solicitar cotización</div>
+
+            {quoteDone && (
+              <div style={{ background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:10, padding:"12px 16px", marginBottom:16, color:C.green, fontWeight:600 }}>
+                ✅ ¡Solicitud enviada! El taller te enviará la cotización a la brevedad.
+              </div>
+            )}
+
+            {!myClient && <div style={{ color:C.red, fontSize:14 }}>Necesitás estar registrado como cliente para solicitar una cotización.</div>}
+
+            {myClient && (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
+                {vehicles.length>0 && (
+                  <Field label="Vehículo (opcional)">
+                    <select value={quoteVehicle} onChange={e=>setQuoteVehicle(e.target.value)} style={IS()}>
+                      <option value="">Sin especificar</option>
+                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <div style={{ marginTop:14 }}>
+                  <Field label="Describí lo que necesitás cotizar *">
+                    <textarea value={quoteDesc} onChange={e=>setQuoteDesc(e.target.value)} rows={4} placeholder="Ej: Necesito cotizar cambio de frenos delanteros y revisión del aire acondicionado…" style={{...IS(),resize:"vertical"}} />
+                  </Field>
+                </div>
+                <button onClick={submitQuote} disabled={quoteLoading || !quoteDesc.trim()} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(quoteLoading||!quoteDesc.trim())?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:(quoteLoading||!quoteDesc.trim())?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                  {quoteLoading ? <><Spinner />Enviando…</> : "💬 Solicitar cotización"}
+                </button>
+              </div>
+            )}
+
+            {/* Historial de cotizaciones */}
+            {myQuotes.length > 0 && (
+              <div style={{ marginTop:24 }}>
+                <div style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>Mis cotizaciones</div>
+                {[...myQuotes].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(q=>{
+                  const sc = QUOTE_STATUS[q.status] || QUOTE_STATUS.pending;
+                  return (
+                    <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, color:C.text }}>{q.description}</div>
+                          {q.total > 0 && <div style={{ fontWeight:800, fontSize:16, color:C.green, marginTop:6 }}>{fmtCRC(q.total)}</div>}
+                        </div>
+                        <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -3257,6 +3347,175 @@ function SubcontractModal({ item, onSave, onClose }) {
         <Field label="Notas"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
       </div>
       <ModalActions onSave={()=>onSave(f)} onClose={onClose} />
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   QUOTES PAGE — Cotizaciones (admin)
+═══════════════════════════════════════════════════ */
+const QUOTE_STATUS = {
+  pending: { label:"Solicitada", color:"#F59E0B", bg:"#2D2000" },
+  quoted:  { label:"Cotizada",   color:"#3B82F6", bg:"#001A2D" },
+  sent:    { label:"Enviada",    color:"#10B981", bg:"#002D1A" },
+  closed:  { label:"Cerrada",    color:"#8B5CF6", bg:"#1A0A2D" },
+};
+
+function QuotesPage({ data, save, toast }) {
+  const [modal, setModal] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const [filter, setFilter] = useState("all");
+
+  const quotes = data.quotes || [];
+  const filtered = filter==="all" ? quotes : quotes.filter(q=>q.status===filter);
+  const sorted = [...filtered].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+
+  const upd = (id, patch) => {
+    save({ quotes: quotes.map(q=>q.id===id?{...q,...patch}:q) });
+  };
+
+  const del = (id) => { save({ quotes: quotes.filter(q=>q.id!==id) }); toast("Cotización eliminada","err"); setDelId(null); };
+
+  const buildWhatsAppLink = (q) => {
+    const client  = data.clients.find(c=>c.id===q.clientId);
+    const vehicle = data.vehicles.find(v=>v.id===q.vehicleId);
+    const svcLines = (q.services||[]).map(sid => {
+      const s = (data.services||SERVICES_CAT).find(x=>x.id===sid);
+      return s ? `• ${s.name} — ${fmtCRC(s.price)}` : null;
+    }).filter(Boolean).join("\n");
+
+    let msg = `Hola ${client?.name||""}, le compartimos la cotización de Tecno AutoAsisten CR:\n\n`;
+    if (vehicle) msg += `Vehículo: ${vehicle.year} ${vehicle.brand} ${vehicle.model} (${vehicle.plate})\n\n`;
+    msg += `Servicios cotizados:\n${svcLines || "—"}\n\n`;
+    msg += `*Total: ${fmtCRC(q.total)}*\n\n`;
+    if (q.notes) msg += `Notas: ${q.notes}\n\n`;
+    msg += `Cualquier consulta con gusto le atendemos. ¡Gracias por confiar en nosotros!`;
+
+    const phone = (client?.phone || "").replace(/\D/g,"");
+    const waPhone = phone ? (phone.startsWith("506") ? phone : `506${phone}`) : "";
+    return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const counts = {
+    pending: quotes.filter(q=>q.status==="pending").length,
+    quoted:  quotes.filter(q=>q.status==="quoted").length,
+    sent:    quotes.filter(q=>q.status==="sent").length,
+  };
+
+  return (
+    <div>
+      <PageHeader title={`Cotizaciones (${quotes.length})`} />
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+        {[["pending","Pendientes de armar",C.amber],["quoted","Listas para enviar",C.blueHi],["sent","Enviadas",C.green]].map(([k,l,color])=>(
+          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
+            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
+            <div style={{ fontSize:24, fontWeight:800, color, marginTop:5 }}>{counts[k]||0}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["all","Todas"],["pending","Solicitadas"],["quoted","Cotizadas"],["sent","Enviadas"],["closed","Cerradas"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${filter===v?C.blueHi:C.border}`, background:filter===v?`${C.blue}22`:"transparent", color:filter===v?C.blueHi:C.textMd, cursor:"pointer", fontSize:13, fontWeight:filter===v?700:400 }}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {sorted.map(q=>{
+          const client  = data.clients.find(c=>c.id===q.clientId);
+          const vehicle = data.vehicles.find(v=>v.id===q.vehicleId);
+          const sc = QUOTE_STATUS[q.status] || QUOTE_STATUS.pending;
+          return (
+            <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
+                <div style={{ flex:1, minWidth:200 }}>
+                  <div style={{ fontWeight:700, fontSize:15 }}>{client?.name || "Cliente desconocido"}</div>
+                  {vehicle && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>🚗 {vehicle.plate} — {vehicle.brand} {vehicle.model}</div>}
+                  <div style={{ fontSize:13, color:C.text, marginTop:8, background:C.bg, borderRadius:8, padding:"10px 12px" }}>
+                    💬 {q.description}
+                  </div>
+                  {q.services?.length > 0 && (
+                    <div style={{ marginTop:8, fontSize:12, color:C.textSm }}>
+                      Servicios: {q.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                  {q.total > 0 && <div style={{ fontWeight:800, fontSize:17, color:C.green, marginTop:8 }}>{fmtCRC(q.total)}</div>}
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
+                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                    {q.status === "pending" && <TBtn label="✏️ Armar cotización" color={C.blueHi} onClick={()=>setModal({mode:"edit",item:q})} />}
+                    {(q.status === "quoted" || q.status==="sent") && <TBtn label="✏️ Editar" color={C.blueHi} onClick={()=>setModal({mode:"edit",item:q})} />}
+                    {q.status === "quoted" && client?.phone && (
+                      <a href={buildWhatsAppLink(q)} target="_blank" rel="noopener noreferrer" onClick={()=>upd(q.id,{status:"sent"})}
+                        style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.green}44`, background:`${C.green}18`, color:C.green, fontWeight:700, fontSize:12, textDecoration:"none", display:"inline-block" }}>
+                        📲 Enviar por WhatsApp
+                      </a>
+                    )}
+                    {q.status === "sent" && client?.phone && (
+                      <a href={buildWhatsAppLink(q)} target="_blank" rel="noopener noreferrer"
+                        style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:12, textDecoration:"none", display:"inline-block" }}>
+                        📲 Reenviar
+                      </a>
+                    )}
+                    {q.status !== "closed" && <TBtn label="✓ Cerrar" color={C.purple} onClick={()=>upd(q.id,{status:"closed"})} />}
+                    <IBtn icon="🗑" red onClick={()=>setDelId(q.id)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length===0 && <Empty msg="No hay cotizaciones en este filtro" />}
+      </div>
+
+      {modal && <QuoteModal item={modal.item} data={data} onSave={(item)=>{ upd(item.id, item); setModal(null); toast("Cotización actualizada"); }} onClose={()=>setModal(null)} />}
+      {delId && <Confirm msg="¿Eliminar esta cotización?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+    </div>
+  );
+}
+
+function QuoteModal({ item, data, onSave, onClose }) {
+  const [f, setF] = useState({ ...item, services: item.services || [] });
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const toggleSvc = (id) => setF(p=>({ ...p, services: p.services.includes(id) ? p.services.filter(s=>s!==id) : [...p.services, id] }));
+  const services = data.services || SERVICES_CAT;
+  const client = data.clients.find(c=>c.id===f.clientId);
+  const total = f.services.reduce((s,id)=>s+(services.find(x=>x.id===id)?.price||0),0);
+
+  return (
+    <Modal title="Armar cotización" onClose={onClose} wide>
+      <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginBottom:16 }}>
+        <div style={{ fontSize:12, color:C.textSm, marginBottom:4 }}>Solicitud del cliente — {client?.name}</div>
+        <div style={{ fontSize:14 }}>{f.description}</div>
+      </div>
+
+      <Field label="Servicios a incluir">
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
+          {services.map(s=>{
+            const sel = f.services.includes(s.id);
+            return <button key={s.id} onClick={()=>toggleSvc(s.id)} style={{ padding:"7px 13px", borderRadius:8, border:`1px solid ${sel?C.blueHi:C.border}`, background:sel?`${C.blue}22`:"transparent", color:sel?C.blueHi:C.textMd, cursor:"pointer", fontSize:12, fontWeight:sel?700:400 }}>{s.name} · {fmtCRC(s.price)}</button>;
+          })}
+        </div>
+      </Field>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Monto adicional / ajuste manual (₡, opcional)">
+          <input type="number" value={f.manualAdjust||0} onChange={e=>set("manualAdjust",+e.target.value)} style={IS()} placeholder="0" />
+        </Field>
+      </div>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Notas para el cliente"><textarea value={f.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      </div>
+
+      <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginTop:16, display:"flex", justifyContent:"space-between" }}>
+        <span style={{ color:C.textMd, fontSize:14 }}>Total cotizado</span>
+        <span style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(total + (+f.manualAdjust||0))}</span>
+      </div>
+
+      <ModalActions onSave={()=>onSave({ ...f, total: total + (+f.manualAdjust||0), status: "quoted" })} onClose={onClose} />
     </Modal>
   );
 }
