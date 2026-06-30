@@ -274,9 +274,10 @@ export default function App() {
     const token = localStorage.getItem("tac_token");
     const email = localStorage.getItem("tac_email");
     if (token && email) {
+      const role = localStorage.getItem("tac_role") || "admin";
       auth.getUser(token).then(u => {
-        if (u && u.email) setSession({ token, email: u.email });
-        else { localStorage.removeItem("tac_token"); localStorage.removeItem("tac_email"); }
+        if (u && u.email) setSession({ token, email: u.email, role });
+        else { localStorage.removeItem("tac_token"); localStorage.removeItem("tac_email"); localStorage.removeItem("tac_role"); }
         setAuthChecked(true);
       }).catch(() => setAuthChecked(true));
     } else {
@@ -284,10 +285,11 @@ export default function App() {
     }
   }, []);
 
-  const handleLogin = (token, email) => {
+  const handleLogin = (token, email, role="admin") => {
     localStorage.setItem("tac_token", token);
     localStorage.setItem("tac_email", email);
-    setSession({ token, email });
+    localStorage.setItem("tac_role", role);
+    setSession({ token, email, role });
   };
 
   const handleLogout = async () => {
@@ -299,6 +301,7 @@ export default function App() {
 
   if (!authChecked) return <Loader />;
   if (!session) return <AuthPage onLogin={handleLogin} />;
+  if (session.role === "client") return <ClientPortal session={session} onLogout={handleLogout} />;
 
   return <MainApp session={session} onLogout={handleLogout} />;
 }
@@ -2599,7 +2602,7 @@ function AuthPage({ onLogin }) {
           await fetch(`${SB_URL}/rest/v1/pending_users`, {
             method: "POST",
             headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ id: userId, name: name.trim(), phone: phone.trim(), email: email.trim(), status: "pending", created_at: new Date().toISOString() })
+            body: JSON.stringify({ id: userId, name: name.trim(), phone: phone.trim(), email: email.trim(), status: "pending", role: "client", created_at: new Date().toISOString() })
           });
         }
         setPending(true);
@@ -2622,9 +2625,9 @@ function AuthPage({ onLogin }) {
 
         if (!userRow) {
           // No pending_users record = admin account, allow in
-          onLogin(res.access_token, res.user?.email || email.trim());
+          onLogin(res.access_token, res.user?.email || email.trim(), "admin");
         } else if (userRow.status === "approved") {
-          onLogin(res.access_token, userRow.name || res.user?.email);
+          onLogin(res.access_token, userRow.name || res.user?.email, userRow.role || "client");
         } else if (userRow.status === "pending") {
           setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
         } else {
@@ -2751,7 +2754,7 @@ function UsersPage({ session }) {
     await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${id}`, {
       method: "PATCH",
       headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, role: status === "approved" ? "client" : undefined })
     });
     showMsg(status === "approved" ? "Usuario aprobado ✓" : "Usuario rechazado");
     loadUsers();
@@ -2862,6 +2865,249 @@ function UsersPage({ session }) {
           {toast2.msg}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   CLIENT PORTAL — Vista para clientes
+═══════════════════════════════════════════════════ */
+function ClientPortal({ session, onLogout }) {
+  const [tab,        setTab]        = useState("appointments");
+  const [clients,    setClients]    = useState([]);
+  const [vehicles,   setVehicles]   = useState([]);
+  const [orders,     setOrders]     = useState([]);
+  const [appts,      setAppts]      = useState([]);
+  const [myClient,   setMyClient]   = useState(null);
+  const [loading,    setLoading]    = useState(true);
+
+  // New appointment form
+  const [apptForm,   setApptForm]   = useState({ vehicleId:"", serviceId:"diag", date:today(), hour:"9:00", notes:"" });
+  const [apptDone,   setApptDone]   = useState(false);
+  const [apptLoading,setApptLoading]= useState(false);
+  const [workers,    setWorkers]    = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [cls, vhs, ords, apts, wks] = await Promise.all([
+        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers")
+      ]);
+      const allClients  = (cls||[]).map(TABLE.clients.fromDb);
+      const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
+      const allOrders   = (ords||[]).map(TABLE.orders.fromDb);
+      const allAppts    = (apts||[]).map(TABLE.appointments.fromDb);
+      const allWorkers  = (wks||[]).map(TABLE.workers.fromDb);
+
+      // Match client by email or name
+      const me = allClients.find(c =>
+        c.email?.toLowerCase() === session.email?.toLowerCase() ||
+        c.name?.toLowerCase()  === session.email?.toLowerCase()
+      );
+
+      setMyClient(me || null);
+      setClients(allClients);
+      setVehicles(me ? allVehicles.filter(v=>v.clientId===me.id) : []);
+      setOrders(me   ? allOrders.filter(o=>o.clientId===me.id)   : []);
+      setAppts(me    ? allAppts.filter(a=>a.clientId===me.id)     : []);
+      setWorkers(allWorkers.filter(w=>w.status==="active"));
+      if (me && allVehicles.filter(v=>v.clientId===me.id).length > 0)
+        setApptForm(f=>({...f, vehicleId: allVehicles.filter(v=>v.clientId===me.id)[0].id }));
+      setLoading(false);
+    })();
+  }, []);
+
+  const bookAppointment = async () => {
+    if (!myClient) return;
+    if (!apptForm.vehicleId || !apptForm.date) return;
+    setApptLoading(true);
+    const newAppt = {
+      id: uid(), clientId: myClient.id, vehicleId: apptForm.vehicleId,
+      serviceId: apptForm.serviceId, date: apptForm.date, hour: apptForm.hour,
+      status: "pending", notes: apptForm.notes,
+      mechanic: workers[0]?.name || ""
+    };
+    await sb.upsert("appointments", TABLE.appointments.toDb(newAppt));
+    setAppts(prev => [...prev, newAppt]);
+    setApptDone(true);
+    setApptLoading(false);
+    setTimeout(()=>setApptDone(false), 4000);
+  };
+
+  const TABS = [
+    { id:"appointments", icon:"📅", label:"Mis citas" },
+    { id:"book",         icon:"➕", label:"Agendar cita" },
+    { id:"orders",       icon:"📋", label:"Mis órdenes" },
+    { id:"vehicles",     icon:"🚗", label:"Mis vehículos" },
+  ];
+
+  if (loading) return <Loader />;
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',system-ui,sans-serif" }}>
+      {/* Header */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 24px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:32, height:32, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🔧</div>
+          <div>
+            <div style={{ fontWeight:700, fontSize:14 }}>Tecno AutoAsisten <span style={{ color:C.blueHi }}>CR</span></div>
+            <div style={{ fontSize:10, color:C.textSm }}>Portal de Clientes</div>
+          </div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:12, color:C.textSm }}>👤 {session.email}</span>
+          <button onClick={onLogout} style={{ fontSize:12, color:C.red, background:"none", border:`1px solid ${C.red}44`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontWeight:600 }}>Salir</button>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:700, margin:"0 auto", padding:"28px 20px" }}>
+
+        {/* Welcome */}
+        {myClient && (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px", marginBottom:24, display:"flex", gap:14, alignItems:"center" }}>
+            <div style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:20, color:"#fff" }}>
+              {myClient.name.charAt(0)}
+            </div>
+            <div>
+              <div style={{ fontWeight:700, fontSize:16 }}>Bienvenido, {myClient.name}</div>
+              <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{vehicles.length} vehículo(s) · {appts.length} cita(s) · {orders.length} orden(es)</div>
+            </div>
+          </div>
+        )}
+
+        {!myClient && (
+          <div style={{ background:`${C.amber}11`, border:`1px solid ${C.amber}44`, borderRadius:12, padding:"16px 20px", marginBottom:24, fontSize:14, color:C.amber }}>
+            ⚠️ Tu perfil de cliente no está vinculado aún. Contactá al taller para que te registren en el sistema.
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display:"flex", gap:6, marginBottom:24, background:C.card, borderRadius:12, padding:6 }}>
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 6px", borderRadius:8, border:"none", cursor:"pointer", background:tab===t.id?C.blue:"transparent", color:tab===t.id?"#fff":C.textMd, fontWeight:tab===t.id?700:400, fontSize:12, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+              <span style={{ fontSize:16 }}>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* MIS CITAS */}
+        {tab==="appointments" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis citas</div>
+            {appts.length===0 && <Empty msg="No tenés citas registradas" />}
+            {[...appts].sort((a,b)=>b.date.localeCompare(a.date)).map(a=>{
+              const svc = SERVICES_CAT.find(s=>s.id===a.serviceId);
+              const sc  = STATUS_COLORS[a.status] || STATUS_COLORS.pending;
+              return (
+                <div key={a.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10, display:"flex", gap:14, alignItems:"center" }}>
+                  <div style={{ background:C.bg, borderRadius:8, padding:"8px 12px", textAlign:"center", minWidth:58, flexShrink:0 }}>
+                    <div style={{ fontSize:10, color:C.textSm }}>{fmtDate(a.date)}</div>
+                    <div style={{ fontWeight:700, color:C.blueHi, fontSize:14 }}>{a.hour}</div>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:600, fontSize:14 }}>{svc?.name || a.serviceId}</div>
+                    <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{a.mechanic && `Mecánico: ${a.mechanic}`}</div>
+                    {a.notes && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
+                  </div>
+                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* AGENDAR CITA */}
+        {tab==="book" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Agendar una cita</div>
+            {!myClient && <div style={{ color:C.red, fontSize:14 }}>Necesitás estar registrado como cliente para agendar.</div>}
+            {myClient && vehicles.length===0 && <div style={{ color:C.amber, fontSize:14 }}>No tenés vehículos registrados. Contactá al taller.</div>}
+            {myClient && vehicles.length>0 && (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
+                {apptDone && (
+                  <div style={{ background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:10, padding:"12px 16px", marginBottom:16, color:C.green, fontWeight:600 }}>
+                    ✅ ¡Cita agendada! El taller confirmará pronto.
+                  </div>
+                )}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  <Field label="Vehículo">
+                    <select value={apptForm.vehicleId} onChange={e=>setApptForm(f=>({...f,vehicleId:e.target.value}))} style={IS()}>
+                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Servicio">
+                    <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={IS()}>
+                      {SERVICES_CAT.map(s=><option key={s.id} value={s.id}>{s.name} · {fmtCRC(s.price)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Fecha">
+                    <input type="date" value={apptForm.date} min={today()} onChange={e=>setApptForm(f=>({...f,date:e.target.value}))} style={IS()} />
+                  </Field>
+                  <Field label="Hora">
+                    <select value={apptForm.hour} onChange={e=>setApptForm(f=>({...f,hour:e.target.value}))} style={IS()}>
+                      {HOURS.map(h=><option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <div style={{ marginTop:14 }}>
+                  <Field label="Notas / problema">
+                    <textarea value={apptForm.notes} onChange={e=>setApptForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Describí el problema o lo que necesitás revisar…" style={{...IS(),resize:"vertical"}} />
+                  </Field>
+                </div>
+                <button onClick={bookAppointment} disabled={apptLoading} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:apptLoading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:apptLoading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                  {apptLoading ? <><Spinner />Agendando…</> : "📅 Confirmar cita"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MIS ÓRDENES */}
+        {tab==="orders" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis órdenes de trabajo</div>
+            {orders.length===0 && <Empty msg="No tenés órdenes registradas" />}
+            {[...orders].sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{
+              const sc = ORDER_STATUS[o.status] || ORDER_STATUS.active;
+              return (
+                <div key={o.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px", marginBottom:10 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>{fmtDate(o.date)}</div>
+                      <div style={{ fontSize:12, color:C.textSm, marginTop:3 }}>
+                        {o.services.map(sid=>SERVICES_CAT.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
+                      </div>
+                      {o.mechanic && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>Mecánico: {o.mechanic}</div>}
+                      {o.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>💬 {o.notes}</div>}
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(o.total)}</div>
+                      <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* MIS VEHÍCULOS */}
+        {tab==="vehicles" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis vehículos</div>
+            {vehicles.length===0 && <Empty msg="No tenés vehículos registrados" />}
+            {vehicles.map(v=>(
+              <div key={v.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px", marginBottom:10 }}>
+                <div style={{ fontWeight:700, fontSize:15 }}>{v.plate} — {v.year} {v.brand} {v.model}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:4 }}>{v.color} · {v.fuel} · {Number(v.km).toLocaleString()} km</div>
+                {v.vin && <div style={{ fontSize:11, color:C.textSm, marginTop:2 }}>VIN: {v.vin}</div>}
+                {v.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:4 }}>💬 {v.notes}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
