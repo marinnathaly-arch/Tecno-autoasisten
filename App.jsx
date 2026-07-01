@@ -927,6 +927,16 @@ function ApptsPage({ data, save, toast }) {
           const vehicle = data.vehicles.find(v=>v.id===a.vehicleId);
           const svc     = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
           const sc      = STATUS_COLORS[a.status];
+
+          const waLink = (() => {
+            const phone = (client?.phone||"").replace(/\D/g,"");
+            if (!phone) return null;
+            const waPhone = phone.startsWith("506") ? phone : `506${phone}`;
+            const statusMsg = a.status==="confirmed" ? "✅ *Su cita ha sido CONFIRMADA.*" : a.status==="cancelled" ? "❌ *Su cita ha sido CANCELADA.*" : "📅 *Recordatorio de cita.*";
+            const msg = `Hola ${client?.name||""}, le escribe Tecno AutoAsisten CR.\n\n${statusMsg}\n\n📅 Fecha: ${fmtDate(a.date)}\n🕐 Hora: ${a.hour}\n🚗 Vehículo: ${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||""}\n🔧 Servicio: ${svc?.name||""}\n👷 Mecánico: ${a.mechanic||""}\n\n${a.notes?`Notas: ${a.notes}\n\n`:""}Cualquier consulta estamos a su disposición. ¡Gracias!`;
+            return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+          })();
+
           return (
             <div key={a.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
               <div style={{ background:C.bg, borderRadius:8, padding:"7px 12px", textAlign:"center", minWidth:58, flexShrink:0 }}>
@@ -943,6 +953,12 @@ function ApptsPage({ data, save, toast }) {
                 {a.status==="pending"   && <TBtn label="Confirmar" color={C.green}  onClick={()=>upd(a.id,{status:"confirmed"})} />}
                 {a.status==="confirmed" && <TBtn label="Completar" color={C.purple} onClick={()=>upd(a.id,{status:"done"})} />}
                 {a.status!=="cancelled"&&a.status!=="done" && <TBtn label="Cancelar" color={C.red} onClick={()=>upd(a.id,{status:"cancelled"})} />}
+                {waLink && (
+                  <a href={waLink} target="_blank" rel="noopener noreferrer"
+                    style={{ padding:"6px 10px", borderRadius:7, border:`1px solid #25D36644`, background:`#25D36618`, color:"#25D366", fontWeight:700, fontSize:12, textDecoration:"none", display:"inline-flex", alignItems:"center", gap:4 }}>
+                    📲 WA
+                  </a>
+                )}
                 <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:a})} />
                 <IBtn icon="🗑" red onClick={()=>setDelId(a.id)} />
               </div>
