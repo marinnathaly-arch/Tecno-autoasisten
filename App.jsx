@@ -111,7 +111,7 @@ const TABLE = {
   library:      { table:"library",      toDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", upload_date:r.uploadDate||"", file_size:r.fileSize||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", uploadDate:r.upload_date||"", fileSize:r.file_size||"", notes:r.notes||"" }) },
   services:     { table:"services",     toDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }) },
   subcontracts: { table:"subcontracts", toDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", lead_time:r.leadTime||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", leadTime:r.lead_time||"", notes:r.notes||"" }) },
-  quotes:       { table:"quotes",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId||null, description:r.description||"", status:r.status||"pending", services:r.services||[], total:r.total||0, notes:r.notes||"", created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id||"", description:r.description||"", status:r.status||"pending", services:r.services||[], total:r.total||0, notes:r.notes||"", createdAt:r.created_at||"" }) },
+  quotes:       { table:"quotes",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId||null, description:r.description||"", status:r.status||"pending", services:r.services||[], total:r.total||0, notes:r.notes||"", created_at:r.createdAt||new Date().toISOString(), quote_type:r.quoteType||"", possible_failure:r.possibleFailure||"", possible_repair:r.possibleRepair||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id||"", description:r.description||"", status:r.status||"pending", services:r.services||[], total:r.total||0, notes:r.notes||"", createdAt:r.created_at||"", quoteType:r.quote_type||"", possibleFailure:r.possible_failure||"", possibleRepair:r.possible_repair||"" }) },
 };
 
 async function loadAll() {
@@ -2697,6 +2697,30 @@ function Spinner() {
   </span>;
 }
 
+function PasswordField({ value, onChange, onKeyDown, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position:"relative" }}>
+      <input
+        type={show?"text":"password"}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        style={{...IS(), padding:"12px 44px 12px 14px"}}
+      />
+      <button
+        type="button"
+        onClick={()=>setShow(s=>!s)}
+        style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:C.textSm, fontSize:16, padding:4 }}
+        tabIndex={-1}
+      >
+        {show ? "🙈" : "👁️"}
+      </button>
+    </div>
+  );
+}
+
 
 /* ═══════════════════════════════════════════════════
    AUTH PAGE — Login / Registro con aprobación manual
@@ -2881,12 +2905,12 @@ function AuthPage({ onLogin }) {
             </div>
             <div>
               <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Contraseña *</label>
-              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Mínimo 6 caracteres" style={{...IS(), padding:"12px 14px"}} />
+              <PasswordField value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Mínimo 6 caracteres" />
             </div>
             {mode==="register" && (
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña *</label>
-                <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" style={{...IS(), padding:"12px 14px"}} />
+                <PasswordField value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" />
               </div>
             )}
           </div>
@@ -3083,7 +3107,10 @@ function ClientPortal({ session, onLogout }) {
   const [services,   setServices]   = useState(SERVICES_CAT);
   const [myQuotes,   setMyQuotes]   = useState([]);
 
-  // Quote request form
+  // Quote request form (estructurado)
+  const [quoteType,        setQuoteType]        = useState("");      // "preventive" | "corrective"
+  const [quoteFailure,     setQuoteFailure]      = useState("");
+  const [quoteRepair,      setQuoteRepair]       = useState("");
   const [quoteDesc,    setQuoteDesc]    = useState("");
   const [quoteVehicle, setQuoteVehicle] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -3127,16 +3154,17 @@ function ClientPortal({ session, onLogout }) {
   }, []);
 
   const submitQuote = async () => {
-    if (!myClient || !quoteDesc.trim()) return;
+    if (!myClient || !quoteType || !quoteFailure.trim()) return;
     setQuoteLoading(true);
     const newQuote = {
       id: uid(), clientId: myClient.id, vehicleId: quoteVehicle || null,
+      quoteType, possibleFailure: quoteFailure.trim(), possibleRepair: quoteRepair.trim(),
       description: quoteDesc.trim(), status: "pending", services: [], total: 0,
       notes: "", createdAt: new Date().toISOString()
     };
     await sb.upsert("quotes", TABLE.quotes.toDb(newQuote));
     setMyQuotes(prev => [...prev, newQuote]);
-    setQuoteDesc("");
+    setQuoteType(""); setQuoteFailure(""); setQuoteRepair(""); setQuoteDesc("");
     setQuoteDone(true);
     setQuoteLoading(false);
     setTimeout(()=>setQuoteDone(false), 4000);
@@ -3324,12 +3352,39 @@ function ClientPortal({ session, onLogout }) {
                     </select>
                   </Field>
                 )}
+
                 <div style={{ marginTop:14 }}>
-                  <Field label="Describí lo que necesitás cotizar *">
-                    <textarea value={quoteDesc} onChange={e=>setQuoteDesc(e.target.value)} rows={4} placeholder="Ej: Necesito cotizar cambio de frenos delanteros y revisión del aire acondicionado…" style={{...IS(),resize:"vertical"}} />
+                  <Field label="Tipo de cotización *">
+                    <div style={{ display:"flex", gap:10, marginTop:6 }}>
+                      {[["preventive","🛡️ Preventiva","Revisión o mantenimiento antes de que falle"],["corrective","🔧 Correctiva","El vehículo ya presenta un problema"]].map(([v,l,desc])=>(
+                        <button key={v} onClick={()=>setQuoteType(v)} style={{ flex:1, textAlign:"left", padding:"12px 14px", borderRadius:10, border:`1px solid ${quoteType===v?C.blueHi:C.border}`, background:quoteType===v?`${C.blue}22`:"transparent", cursor:"pointer" }}>
+                          <div style={{ fontWeight:700, fontSize:13, color:quoteType===v?C.blueHi:C.text }}>{l}</div>
+                          <div style={{ fontSize:11, color:C.textSm, marginTop:3 }}>{desc}</div>
+                        </button>
+                      ))}
+                    </div>
                   </Field>
                 </div>
-                <button onClick={submitQuote} disabled={quoteLoading || !quoteDesc.trim()} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(quoteLoading||!quoteDesc.trim())?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:(quoteLoading||!quoteDesc.trim())?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+
+                <div style={{ marginTop:14 }}>
+                  <Field label={quoteType==="corrective" ? "¿Qué falla presenta el vehículo? *" : "¿Qué querés revisar o mantener? *"}>
+                    <textarea value={quoteFailure} onChange={e=>setQuoteFailure(e.target.value)} rows={3} placeholder={quoteType==="corrective" ? "Ej: Ruido al frenar, el carro tiembla, no enciende…" : "Ej: Cambio de aceite, revisión general antes de viaje…"} style={{...IS(),resize:"vertical"}} />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop:14 }}>
+                  <Field label="Reparación que creés que necesita (opcional)">
+                    <textarea value={quoteRepair} onChange={e=>setQuoteRepair(e.target.value)} rows={2} placeholder="Si tenés una idea de qué podría ser, escribila aquí…" style={{...IS(),resize:"vertical"}} />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop:14 }}>
+                  <Field label="Detalles adicionales (opcional)">
+                    <textarea value={quoteDesc} onChange={e=>setQuoteDesc(e.target.value)} rows={2} placeholder="Cualquier otra información que nos ayude…" style={{...IS(),resize:"vertical"}} />
+                  </Field>
+                </div>
+
+                <button onClick={submitQuote} disabled={quoteLoading || !quoteType || !quoteFailure.trim()} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(quoteLoading||!quoteType||!quoteFailure.trim())?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:(quoteLoading||!quoteType||!quoteFailure.trim())?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
                   {quoteLoading ? <><Spinner />Enviando…</> : "💬 Solicitar cotización"}
                 </button>
               </div>
@@ -3343,10 +3398,12 @@ function ClientPortal({ session, onLogout }) {
                   const sc = QUOTE_STATUS[q.status] || QUOTE_STATUS.pending;
                   return (
                     <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
                         <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, color:C.text }}>{q.description}</div>
-                          {q.total > 0 && <div style={{ fontWeight:800, fontSize:16, color:C.green, marginTop:6 }}>{fmtCRC(q.total)}</div>}
+                          {q.quoteType && <div style={{ fontSize:11, fontWeight:700, color:C.blueHi, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>{q.quoteType==="preventive"?"🛡️ Preventiva":"🔧 Correctiva"}</div>}
+                          {q.possibleFailure && <div style={{ fontSize:13, color:C.text, marginBottom:4 }}>📋 {q.possibleFailure}</div>}
+                          {q.possibleRepair  && <div style={{ fontSize:12, color:C.textSm }}>🔩 {q.possibleRepair}</div>}
+                          {q.total > 0 && <div style={{ fontWeight:800, fontSize:16, color:C.green, marginTop:8 }}>{fmtCRC(q.total)}</div>}
                         </div>
                         <Pill label={sc.label} color={sc.color} bg={sc.bg} />
                       </div>
@@ -3573,11 +3630,39 @@ function QuotesPage({ data, save, toast }) {
             <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
                 <div style={{ flex:1, minWidth:200 }}>
-                  <div style={{ fontWeight:700, fontSize:15 }}>{client?.name || "Cliente desconocido"}</div>
-                  {vehicle && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>🚗 {vehicle.plate} — {vehicle.brand} {vehicle.model}</div>}
-                  <div style={{ fontSize:13, color:C.text, marginTop:8, background:C.bg, borderRadius:8, padding:"10px 12px" }}>
-                    💬 {q.description}
+                  {/* Header */}
+                  <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:6 }}>
+                    <div style={{ fontWeight:700, fontSize:15 }}>{client?.name || "Cliente desconocido"}</div>
+                    {q.quoteType && (
+                      <span style={{ fontSize:11, fontWeight:700, background: q.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: q.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>
+                        {q.quoteType==="preventive"?"🛡️ Preventiva":"🔧 Correctiva"}
+                      </span>
+                    )}
                   </div>
+                  {vehicle && <div style={{ fontSize:12, color:C.textSm, marginBottom:10 }}>🚗 {vehicle.plate} — {vehicle.brand} {vehicle.model}</div>}
+
+                  {/* Structured fields */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                    {q.possibleFailure && (
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>Falla / Revisión</div>
+                        <div style={{ fontSize:13, color:C.text }}>{q.possibleFailure}</div>
+                      </div>
+                    )}
+                    {q.possibleRepair && (
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>Reparación sugerida</div>
+                        <div style={{ fontSize:13, color:C.text }}>{q.possibleRepair}</div>
+                      </div>
+                    )}
+                    {q.description && (
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px", gridColumn:"span 2" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>Detalles adicionales</div>
+                        <div style={{ fontSize:13, color:C.text }}>{q.description}</div>
+                      </div>
+                    )}
+                  </div>
+
                   {q.services?.length > 0 && (
                     <div style={{ marginTop:8, fontSize:12, color:C.textSm }}>
                       Servicios: {q.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
@@ -3629,9 +3714,31 @@ function QuoteModal({ item, data, onSave, onClose }) {
 
   return (
     <Modal title="Armar cotización" onClose={onClose} wide>
-      <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginBottom:16 }}>
-        <div style={{ fontSize:12, color:C.textSm, marginBottom:4 }}>Solicitud del cliente — {client?.name}</div>
-        <div style={{ fontSize:14 }}>{f.description}</div>
+      <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16 }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+          <div style={{ fontSize:13, fontWeight:700 }}>{client?.name}</div>
+          {f.quoteType && <span style={{ fontSize:11, fontWeight:700, background: f.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: f.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>{f.quoteType==="preventive"?"🛡️ Preventiva":"🔧 Correctiva"}</span>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          {f.possibleFailure && (
+            <div style={{ background:C.surface, borderRadius:8, padding:"10px 12px" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Falla / Revisión</div>
+              <div style={{ fontSize:13, color:C.text }}>{f.possibleFailure}</div>
+            </div>
+          )}
+          {f.possibleRepair && (
+            <div style={{ background:C.surface, borderRadius:8, padding:"10px 12px" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Reparación sugerida</div>
+              <div style={{ fontSize:13, color:C.text }}>{f.possibleRepair}</div>
+            </div>
+          )}
+          {f.description && (
+            <div style={{ background:C.surface, borderRadius:8, padding:"10px 12px", gridColumn:"span 2" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Detalles adicionales</div>
+              <div style={{ fontSize:13, color:C.text }}>{f.description}</div>
+            </div>
+          )}
+        </div>
       </div>
 
       <Field label="Servicios a incluir">
@@ -3711,11 +3818,11 @@ function ResetPasswordPage({ token, onDone }) {
               <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Nueva contraseña</label>
-                  <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" style={{...IS(), padding:"12px 14px"}} />
+                  <PasswordField value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña</label>
-                  <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" style={{...IS(), padding:"12px 14px"}} />
+                  <PasswordField value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" />
                 </div>
               </div>
               {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
