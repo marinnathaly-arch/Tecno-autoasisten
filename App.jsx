@@ -3113,6 +3113,10 @@ function ClientPortal({ session, onLogout }) {
   const [orders,     setOrders]     = useState([]);
   const [appts,      setAppts]      = useState([]);
   const [myClient,   setMyClient]   = useState(null);
+  const [regForm,    setRegForm]    = useState({ name:"", phone:"", idNum:"", plate:"", brand:"", model:"", year:new Date().getFullYear(), color:"", fuel:"Gasolina", km:0 });
+  const [regStep,    setRegStep]    = useState("client"); // "client" | "vehicle" | "done"
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError,   setRegError]   = useState("");
   const [loading,    setLoading]    = useState(true);
 
   // New appointment form
@@ -3186,6 +3190,30 @@ function ClientPortal({ session, onLogout }) {
     setTimeout(()=>setQuoteDone(false), 4000);
   };
 
+  const submitRegistration = async () => {
+    setRegError(""); setRegLoading(true);
+    try {
+      if (regStep === "client") {
+        if (!regForm.name.trim() || !regForm.phone.trim()) { setRegError("Nombre y teléfono son obligatorios."); setRegLoading(false); return; }
+        const newClient = { id: uid(), name: regForm.name.trim(), phone: regForm.phone.trim(), email: session.email, idNum: regForm.idNum.trim(), notes: "" };
+        await sb.upsert("clients", TABLE.clients.toDb(newClient));
+        setMyClient(newClient);
+        setRegStep("vehicle");
+      } else {
+        if (!regForm.plate.trim() || !regForm.brand.trim()) { setRegError("Placa y marca son obligatorias."); setRegLoading(false); return; }
+        const newVehicle = { id: uid(), clientId: myClient.id, plate: regForm.plate.trim().toUpperCase(), brand: regForm.brand.trim(), model: regForm.model.trim(), year: regForm.year, color: regForm.color.trim(), fuel: regForm.fuel, km: regForm.km, vin: "", notes: "" };
+        await sb.upsert("vehicles", TABLE.vehicles.toDb(newVehicle));
+        setVehicles([newVehicle]);
+        setApptForm(f=>({...f, vehicleId: newVehicle.id}));
+        setQuoteVehicle(newVehicle.id);
+        setRegStep("done");
+      }
+    } catch(e) { setRegError("Error al guardar. Intentá de nuevo."); }
+    setRegLoading(false);
+  };
+
+  const skipVehicle = () => setRegStep("done");
+
   const bookAppointment = async () => {
     if (!myClient) return;
     if (!apptForm.vehicleId || !apptForm.date) return;
@@ -3245,9 +3273,57 @@ function ClientPortal({ session, onLogout }) {
           </div>
         )}
 
-        {!myClient && (
-          <div style={{ background:`${C.amber}11`, border:`1px solid ${C.amber}44`, borderRadius:12, padding:"16px 20px", marginBottom:24, fontSize:14, color:C.amber }}>
-            ⚠️ Tu perfil de cliente no está vinculado aún. Contactá al taller para que te registren en el sistema.
+        {!myClient && regStep !== "done" && (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px", marginBottom:24 }}>
+            <div style={{ fontWeight:800, fontSize:18, marginBottom:6 }}>
+              {regStep==="client" ? "👤 Completá tu perfil" : "🚗 Registrá tu vehículo"}
+            </div>
+            <div style={{ fontSize:13, color:C.textMd, marginBottom:20 }}>
+              {regStep==="client"
+                ? "Para agendar citas y cotizaciones necesitamos tus datos."
+                : "Agregá tu vehículo para poder agendar citas. Podés saltarte este paso."}
+            </div>
+
+            {regStep==="client" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <Field label="Nombre completo *"><input value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} placeholder="Juan Pérez" style={IS()} /></Field>
+                <Field label="Teléfono *"><input value={regForm.phone} onChange={e=>setRegForm(f=>({...f,phone:e.target.value}))} placeholder="8800-0000" style={IS()} /></Field>
+                <div style={{ gridColumn:"span 2" }}>
+                  <Field label="Cédula / ID (opcional)"><input value={regForm.idNum} onChange={e=>setRegForm(f=>({...f,idNum:e.target.value}))} placeholder="1-0000-0000" style={IS()} /></Field>
+                </div>
+              </div>
+            )}
+
+            {regStep==="vehicle" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <Field label="Placa *"><input value={regForm.plate} onChange={e=>setRegForm(f=>({...f,plate:e.target.value.toUpperCase()}))} placeholder="ABC-123" style={IS()} /></Field>
+                <Field label="Marca *"><input value={regForm.brand} onChange={e=>setRegForm(f=>({...f,brand:e.target.value}))} placeholder="Toyota" style={IS()} /></Field>
+                <Field label="Modelo"><input value={regForm.model} onChange={e=>setRegForm(f=>({...f,model:e.target.value}))} placeholder="Corolla" style={IS()} /></Field>
+                <Field label="Año"><input type="number" value={regForm.year} onChange={e=>setRegForm(f=>({...f,year:+e.target.value}))} style={IS()} /></Field>
+                <Field label="Color"><input value={regForm.color} onChange={e=>setRegForm(f=>({...f,color:e.target.value}))} placeholder="Blanco" style={IS()} /></Field>
+                <Field label="Combustible">
+                  <select value={regForm.fuel} onChange={e=>setRegForm(f=>({...f,fuel:e.target.value}))} style={IS()}>
+                    {["Gasolina","Diésel","Híbrido","Eléctrico"].map(fu=><option key={fu}>{fu}</option>)}
+                  </select>
+                </Field>
+                <Field label="Kilometraje"><input type="number" value={regForm.km} onChange={e=>setRegForm(f=>({...f,km:+e.target.value}))} style={IS()} /></Field>
+              </div>
+            )}
+
+            {regError && <div style={{ marginTop:12, color:C.red, fontSize:13 }}>❌ {regError}</div>}
+
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={submitRegistration} disabled={regLoading} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:regLoading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:regLoading?"default":"pointer" }}>
+                {regLoading ? "Guardando…" : regStep==="client" ? "Continuar →" : "Guardar vehículo →"}
+              </button>
+              {regStep==="vehicle" && <button onClick={skipVehicle} style={{ padding:"12px 20px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontSize:14, cursor:"pointer" }}>Omitir</button>}
+            </div>
+          </div>
+        )}
+
+        {!myClient && regStep === "done" && (
+          <div style={{ background:`${C.green}11`, border:`1px solid ${C.green}44`, borderRadius:12, padding:"16px 20px", marginBottom:24, fontSize:14, color:C.green }}>
+            ✅ ¡Perfil creado! Ya podés agendar citas y solicitar cotizaciones.
           </div>
         )}
 
@@ -3291,7 +3367,7 @@ function ClientPortal({ session, onLogout }) {
         {tab==="book" && (
           <div>
             <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Agendar una cita</div>
-            {!myClient && <div style={{ color:C.red, fontSize:14 }}>Necesitás estar registrado como cliente para agendar.</div>}
+            {!myClient && regStep!=="done" && <div style={{ color:C.amber, fontSize:14 }}>⬆️ Completá tu perfil arriba primero.</div>}
             {myClient && vehicles.length===0 && <div style={{ color:C.amber, fontSize:14 }}>No tenés vehículos registrados. Contactá al taller.</div>}
             {myClient && vehicles.length>0 && (
               <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
@@ -3356,7 +3432,7 @@ function ClientPortal({ session, onLogout }) {
               </div>
             )}
 
-            {!myClient && <div style={{ color:C.red, fontSize:14 }}>Necesitás estar registrado como cliente para solicitar una cotización.</div>}
+            {!myClient && regStep!=="done" && <div style={{ color:C.amber, fontSize:14 }}>⬆️ Completá tu perfil arriba primero.</div>}
 
             {myClient && (
               <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
@@ -3370,10 +3446,14 @@ function ClientPortal({ session, onLogout }) {
                 )}
 
                 <div style={{ marginTop:14 }}>
-                  <Field label="Tipo de cotización *">
-                    <div style={{ display:"flex", gap:10, marginTop:6 }}>
-                      {[["preventive","🛡️ Preventiva","Revisión o mantenimiento antes de que falle"],["corrective","🔧 Correctiva","El vehículo ya presenta un problema"]].map(([v,l,desc])=>(
-                        <button key={v} onClick={()=>setQuoteType(v)} style={{ flex:1, textAlign:"left", padding:"12px 14px", borderRadius:10, border:`1px solid ${quoteType===v?C.blueHi:C.border}`, background:quoteType===v?`${C.blue}22`:"transparent", cursor:"pointer" }}>
+                  <Field label="Tipo de servicio *">
+                    <div style={{ display:"flex", gap:8, marginTop:6, flexWrap:"wrap" }}>
+                      {[
+                        ["diagnosis","🔍 Diagnóstico","Identificar qué tiene el vehículo"],
+                        ["repair","🔧 Reparación","Arreglar un problema conocido"],
+                        ["warranty","🛡️ Garantía","Revisión bajo garantía"]
+                      ].map(([v,l,desc])=>(
+                        <button key={v} onClick={()=>setQuoteType(v)} style={{ flex:1, minWidth:120, textAlign:"left", padding:"12px 14px", borderRadius:10, border:`1px solid ${quoteType===v?C.blueHi:C.border}`, background:quoteType===v?`${C.blue}22`:"transparent", cursor:"pointer" }}>
                           <div style={{ fontWeight:700, fontSize:13, color:quoteType===v?C.blueHi:C.text }}>{l}</div>
                           <div style={{ fontSize:11, color:C.textSm, marginTop:3 }}>{desc}</div>
                         </button>
@@ -3383,20 +3463,8 @@ function ClientPortal({ session, onLogout }) {
                 </div>
 
                 <div style={{ marginTop:14 }}>
-                  <Field label={quoteType==="corrective" ? "¿Qué falla presenta el vehículo? *" : "¿Qué querés revisar o mantener? *"}>
-                    <textarea value={quoteFailure} onChange={e=>setQuoteFailure(e.target.value)} rows={3} placeholder={quoteType==="corrective" ? "Ej: Ruido al frenar, el carro tiembla, no enciende…" : "Ej: Cambio de aceite, revisión general antes de viaje…"} style={{...IS(),resize:"vertical"}} />
-                  </Field>
-                </div>
-
-                <div style={{ marginTop:14 }}>
-                  <Field label="Reparación que creés que necesita (opcional)">
-                    <textarea value={quoteRepair} onChange={e=>setQuoteRepair(e.target.value)} rows={2} placeholder="Si tenés una idea de qué podría ser, escribila aquí…" style={{...IS(),resize:"vertical"}} />
-                  </Field>
-                </div>
-
-                <div style={{ marginTop:14 }}>
-                  <Field label="Detalles adicionales (opcional)">
-                    <textarea value={quoteDesc} onChange={e=>setQuoteDesc(e.target.value)} rows={2} placeholder="Cualquier otra información que nos ayude…" style={{...IS(),resize:"vertical"}} />
+                  <Field label="Describí el problema *">
+                    <textarea value={quoteFailure} onChange={e=>setQuoteFailure(e.target.value)} rows={4} placeholder="Ej: El carro hace un ruido al frenar, la luz de check está encendida, el aire no enfría…" style={{...IS(),resize:"vertical"}} />
                   </Field>
                 </div>
 
@@ -3404,6 +3472,7 @@ function ClientPortal({ session, onLogout }) {
                   {quoteLoading ? <><Spinner />Enviando…</> : "💬 Solicitar cotización"}
                 </button>
               </div>
+            )}
             )}
 
             {/* Historial de cotizaciones */}
@@ -3416,10 +3485,10 @@ function ClientPortal({ session, onLogout }) {
                     <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
                         <div style={{ flex:1 }}>
-                          {q.quoteType && <div style={{ fontSize:11, fontWeight:700, color:C.blueHi, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>{q.quoteType==="preventive"?"🛡️ Preventiva":"🔧 Correctiva"}</div>}
+                          {q.quoteType && <div style={{ fontSize:11, fontWeight:700, color:C.blueHi, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>{q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</div>}
                           {q.possibleFailure && <div style={{ fontSize:13, color:C.text, marginBottom:4 }}>📋 {q.possibleFailure}</div>}
                           {q.possibleRepair  && <div style={{ fontSize:12, color:C.textSm }}>🔩 {q.possibleRepair}</div>}
-                          {q.total > 0 && <div style={{ fontWeight:800, fontSize:16, color:C.green, marginTop:8 }}>{fmtCRC(q.total)}</div>}
+                          {q.total > 0 && <div style={{ fontWeight:800, fontSize:16, color:C.green, marginTop:8 }}>Total: {fmtCRC(q.total)}</div>}
                         </div>
                         <Pill label={sc.label} color={sc.color} bg={sc.bg} />
                       </div>
@@ -3651,7 +3720,7 @@ function QuotesPage({ data, save, toast }) {
                     <div style={{ fontWeight:700, fontSize:15 }}>{client?.name || "Cliente desconocido"}</div>
                     {q.quoteType && (
                       <span style={{ fontSize:11, fontWeight:700, background: q.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: q.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>
-                        {q.quoteType==="preventive"?"🛡️ Preventiva":"🔧 Correctiva"}
+                        {q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}
                       </span>
                     )}
                   </div>
@@ -3684,7 +3753,7 @@ function QuotesPage({ data, save, toast }) {
                       Servicios: {q.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
                     </div>
                   )}
-                  {q.total > 0 && <div style={{ fontWeight:800, fontSize:17, color:C.green, marginTop:8 }}>{fmtCRC(q.total)}</div>}
+                  {q.total > 0 && <div style={{ fontWeight:800, fontSize:17, color:C.green, marginTop:8 }}>Total: {fmtCRC(q.total)}</div>}
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
                   <Pill label={sc.label} color={sc.color} bg={sc.bg} />
@@ -3733,7 +3802,7 @@ function QuoteModal({ item, data, onSave, onClose }) {
       <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16 }}>
         <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
           <div style={{ fontSize:13, fontWeight:700 }}>{client?.name}</div>
-          {f.quoteType && <span style={{ fontSize:11, fontWeight:700, background: f.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: f.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>{f.quoteType==="preventive"?"🛡️ Preventiva":"🔧 Correctiva"}</span>}
+          {f.quoteType && <span style={{ fontSize:11, fontWeight:700, background: f.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: f.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>{f.quoteType==="diagnosis"?"🔍 Diagnóstico":f.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</span>}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           {f.possibleFailure && (
