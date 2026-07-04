@@ -3070,6 +3070,9 @@ function ClientPortal({ session, onLogout }) {
 
   // Data
   const [myClient, setMyClient] = useState(null);
+  const [invForm, setInvForm] = useState({ legalName:"", idNum:"", address:"", email:session.email||"", phone:"", orderId:"", notes:"" });
+  const [invDone, setInvDone] = useState(false);
+  const [invLoad, setInvLoad] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [appts,    setAppts]    = useState([]);
   const [orders,   setOrders]   = useState([]);
@@ -3579,81 +3582,66 @@ function ClientPortal({ session, onLogout }) {
           <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
             <div style={{ fontWeight:700, fontSize:18, marginBottom:4 }}>🧾 Factura electrónica</div>
             <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Llenás tus datos fiscales y te enviamos la factura.</div>
-            {(() => {
-              const [invForm, setInvForm] = useState({ legalName:"", idNum:"", address:"", email:session.email||"", phone:myClient?.phone||"", orderId:"", notes:"" });
-              const [invDone, setInvDone] = useState(false);
-              const [invLoad, setInvLoad] = useState(false);
-              const setI = (k,v) => setInvForm(p=>({...p,[k]:v}));
-              const submit = async () => {
-                if (!invForm.legalName.trim()||!invForm.idNum.trim()) return;
-                setInvLoad(true);
-                const ni = { id:uid(), clientId:myClient?.id||"", orderId:invForm.orderId||null, legalName:invForm.legalName.trim(), idNum:invForm.idNum.trim(), address:invForm.address.trim(), email:invForm.email.trim(), phone:invForm.phone.trim(), status:"pending", notes:invForm.notes.trim(), createdAt:new Date().toISOString() };
-                await sb.upsert("invoices", TABLE.invoices.toDb(ni));
-                setInvDone(true); setInvLoad(false);
-              };
-              return invDone ? (
-                <div style={{ textAlign:"center", padding:"20px 0" }}>
-                  <div style={{ fontSize:48, marginBottom:10 }}>✅</div>
-                  <div style={{ fontWeight:700, color:CP.green, fontSize:16 }}>¡Solicitud enviada!</div>
-                  <div style={{ color:CP.textMd, fontSize:13, marginTop:6 }}>Te enviamos la factura al correo indicado.</div>
+            {invDone ? (
+              <div style={{ textAlign:"center", padding:"20px 0" }}>
+                <div style={{ fontSize:48, marginBottom:10 }}>✅</div>
+                <div style={{ fontWeight:700, color:CP.green, fontSize:16 }}>¡Solicitud enviada!</div>
+                <div style={{ color:CP.textMd, fontSize:13, marginTop:6 }}>Te enviamos la factura al correo indicado.</div>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Nombre legal / Razón social *</label>
+                  <input value={invForm.legalName} onChange={e=>setInvForm(f=>({...f,legalName:e.target.value}))} style={ISC()} />
                 </div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                   <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Nombre legal / Razón social *</label>
-                    <input value={invForm.legalName} onChange={e=>setI("legalName",e.target.value)} style={ISC()} />
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Cédula / RUC *</label>
-                      <input value={invForm.idNum} onChange={e=>setI("idNum",e.target.value)} style={ISC()} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Teléfono</label>
-                      <input value={invForm.phone} onChange={e=>setI("phone",e.target.value)} style={ISC()} />
-                    </div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Cédula / RUC *</label>
+                    <input value={invForm.idNum} onChange={e=>setInvForm(f=>({...f,idNum:e.target.value}))} style={ISC()} />
                   </div>
                   <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Correo para envío *</label>
-                    <input value={invForm.email} onChange={e=>setI("email",e.target.value)} style={ISC()} />
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Teléfono</label>
+                    <input value={invForm.phone} onChange={e=>setInvForm(f=>({...f,phone:e.target.value}))} style={ISC()} />
                   </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Correo para envío *</label>
+                  <input value={invForm.email} onChange={e=>setInvForm(f=>({...f,email:e.target.value}))} style={ISC()} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Dirección fiscal</label>
+                  <input value={invForm.address} onChange={e=>setInvForm(f=>({...f,address:e.target.value}))} style={ISC()} />
+                </div>
+                {orders.length>0 && (
                   <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Dirección fiscal</label>
-                    <input value={invForm.address} onChange={e=>setI("address",e.target.value)} style={ISC()} />
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Orden asociada (opcional)</label>
+                    <select value={invForm.orderId} onChange={e=>setInvForm(f=>({...f,orderId:e.target.value}))} style={ISC()}>
+                      <option value="">— Seleccionar —</option>
+                      {orders.map(o=><option key={o.id} value={o.id}>{fmtDate(o.date)} · {fmtCRC(o.total)}</option>)}
+                    </select>
                   </div>
-                  {orders.length>0 && (
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Orden asociada (opcional)</label>
-                      <select value={invForm.orderId} onChange={e=>setI("orderId",e.target.value)} style={ISC()}>
-                        <option value="">— Seleccionar —</option>
-                        {orders.map(o=><option key={o.id} value={o.id}>{fmtDate(o.date)} · {fmtCRC(o.total)}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <button onClick={submit} disabled={invLoad||!invForm.legalName.trim()||!invForm.idNum.trim()} style={{ padding:"14px", borderRadius:12, border:"none", background:(invLoad||!invForm.legalName.trim()||!invForm.idNum.trim())?"#CBD5E1":`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
-                    {invLoad?"Enviando…":"🧾 Solicitar factura"}
-                  </button>
-
-                  {/* Invoice history */}
-                  {myInvoices.length>0 && (
-                    <div style={{ marginTop:8 }}>
-                      <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>Mis facturas</div>
-                      {myInvoices.map(inv=>(
-                        <div key={inv.id} style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 14px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <div>
-                            <div style={{ fontWeight:600, fontSize:13 }}>{inv.legalName}</div>
-                            <div style={{ fontSize:12, color:CP.textSm }}>{fmtDate(inv.createdAt?.slice(0,10))}</div>
-                          </div>
-                          <span style={{ background: inv.status==="sent"?"#D1FAE5":"#FEF3C7", color:inv.status==="sent"?CP.green:CP.amber, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>
-                            {inv.status==="sent"?"Enviada":"Pendiente"}
-                          </span>
+                )}
+                <button onClick={async()=>{ if(!invForm.legalName.trim()||!invForm.idNum.trim()) return; setInvLoad(true); const ni={id:uid(),clientId:myClient?.id||"",orderId:invForm.orderId||null,legalName:invForm.legalName.trim(),idNum:invForm.idNum.trim(),address:invForm.address.trim(),email:invForm.email.trim(),phone:invForm.phone.trim(),status:"pending",notes:invForm.notes.trim(),createdAt:new Date().toISOString()}; await sb.upsert("invoices",TABLE.invoices.toDb(ni)); setInvDone(true); setInvLoad(false); }} disabled={invLoad||!invForm.legalName.trim()||!invForm.idNum.trim()} style={{ padding:"14px", borderRadius:12, border:"none", background:(invLoad||!invForm.legalName.trim()||!invForm.idNum.trim())?"#CBD5E1":`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
+                  {invLoad?"Enviando…":"🧾 Solicitar factura"}
+                </button>
+                {myInvoices.length>0 && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>Mis facturas</div>
+                    {myInvoices.map(inv=>(
+                      <div key={inv.id} style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 14px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div>
+                          <div style={{ fontWeight:600, fontSize:13 }}>{inv.legalName}</div>
+                          <div style={{ fontSize:12, color:CP.textSm }}>{fmtDate(inv.createdAt?.slice(0,10))}</div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+                        <span style={{ background:inv.status==="sent"?"#D1FAE5":"#FEF3C7", color:inv.status==="sent"?CP.green:CP.amber, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>
+                          {inv.status==="sent"?"Enviada":"Pendiente"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -3924,7 +3912,19 @@ Solo incluye ACTION si el usuario explícitamente pide hacer un cambio.`;
 
   return (
     <div style={{ maxWidth:800, margin:"0 auto", display:"flex", flexDirection:"column", height:"calc(100vh - 160px)" }}>
-      <AIPageHeader icon="🧠" title="Asistente IA del Taller" desc="Preguntá sobre citas, órdenes, clientes, ingresos — o pedile que actualice estados." />
+      {/* Header */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+          <div style={{ width:40, height:40, borderRadius:10, background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🧠</div>
+          <div>
+            <div style={{ fontWeight:800, fontSize:20 }}>Asistente IA del Taller</div>
+            <div style={{ fontSize:13, color:C.textMd }}>Preguntá sobre citas, órdenes, clientes, ingresos — o pedile que actualice estados.</div>
+          </div>
+        </div>
+        <div style={{ background:`${C.purple}11`, border:`1px solid ${C.purple}33`, borderRadius:8, padding:"8px 14px", fontSize:12, color:C.purple }}>
+          ✨ Potenciado por Claude AI · Acceso a datos reales del taller
+        </div>
+      </div>
 
       {/* Quick actions */}
       {history.length<=1 && (
