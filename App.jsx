@@ -54,6 +54,33 @@ const auth = {
   }
 };
 
+
+/* Helper: login with stored obfuscated password */
+async function loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin) {
+  try {
+    // Simple XOR deobfuscation
+    const pw = atob(savedPw).split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join("");
+    setLoading(true);
+    const res = await auth.signIn(savedEmail, pw);
+    if (res.access_token) {
+      const userId = res.user?.id;
+      const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name,role`, {
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
+      });
+      const rows = await checkRes.json();
+      const row  = rows?.[0];
+      if (!row) onLogin(res.access_token, res.user?.email||savedEmail, "admin");
+      else if (row.status==="approved") onLogin(res.access_token, row.name||res.user?.email, row.role||"client");
+      else setError("Cuenta pendiente de aprobación.");
+    } else {
+      setError("No se pudo verificar. Ingresá tu contraseña manualmente.");
+    }
+  } catch(e) {
+    setError("Error de conexión.");
+  }
+  setLoading(false);
+}
+
 const sb = {
   async get(table, token) {
     const tk = token || localStorage.getItem("tac_token") || SB_KEY;
@@ -103,7 +130,7 @@ const TABLE = {
   clients:      { table:"clients",      toDb: r=>({ id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", id_num:r.idNum||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", idNum:r.id_num||"", notes:r.notes||"" }) },
   vehicles:     { table:"vehicles",     toDb: r=>({ id:r.id, client_id:r.clientId, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }) },
   workers:      { table:"workers",      toDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }) },
-  appointments: { table:"appointments", toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, service_id:r.serviceId, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, serviceId:r.service_id, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"" }) },
+  appointments: { table:"appointments", toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, service_id:r.serviceId, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"", custom_service:r.customService||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, serviceId:r.service_id, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"", customService:r.custom_service||"" }) },
   orders:       { table:"orders",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanic_notes:r.mechanicNotes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanicNotes:r.mechanic_notes||"" }) },
   suppliers:    { table:"suppliers",    toDb: r=>({ id:r.id, name:r.name, contact:r.contact||"", phone:r.phone||"", email:r.email||"", category:r.category||"", pay_terms:r.payTerms||"", notes:r.notes||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, contact:r.contact||"", phone:r.phone||"", email:r.email||"", category:r.category||"", payTerms:r.pay_terms||"", notes:r.notes||"", status:r.status||"active" }) },
   inventory:    { table:"inventory",    toDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplier_id:r.supplierId||null, qty:r.qty||0, min_qty:r.minQty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplierId:r.supplier_id||"", qty:r.qty||0, minQty:r.min_qty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }) },
@@ -648,7 +675,7 @@ function Dashboard({ data, setPage }) {
           {upcoming.map(a=>{
             const client = data.clients.find(c=>c.id===a.clientId);
             const vehicle= data.vehicles.find(v=>v.id===a.vehicleId);
-            const svc    = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
+            const svc    = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId); const svcName = a.serviceId==="__custom__" ? (a.customService||"Servicio personalizado") : svc?.name||a.serviceId;
             const sc     = STATUS_COLORS[a.status];
             return (
               <div key={a.id} style={{ display:"flex", gap:14, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
@@ -927,7 +954,7 @@ function ApptsPage({ data, save, toast }) {
         {filtered.map(a=>{
           const client  = data.clients.find(c=>c.id===a.clientId);
           const vehicle = data.vehicles.find(v=>v.id===a.vehicleId);
-          const svc     = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
+          const svc     = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId); const svcName = a.serviceId==="__custom__" ? (a.customService||"Servicio personalizado") : svc?.name||a.serviceId;
           const sc      = STATUS_COLORS[a.status];
 
           const waLink = (() => {
@@ -935,7 +962,7 @@ function ApptsPage({ data, save, toast }) {
             if (!phone) return null;
             const waPhone = phone.startsWith("506") ? phone : `506${phone}`;
             const statusMsg = a.status==="confirmed" ? "✅ *Su cita ha sido CONFIRMADA.*" : a.status==="cancelled" ? "❌ *Su cita ha sido CANCELADA.*" : "📅 *Recordatorio de cita.*";
-            const msg = `Hola ${client?.name||""}, le escribe Tecno AutoAsisten CR.\n\n${statusMsg}\n\n📅 Fecha: ${fmtDate(a.date)}\n🕐 Hora: ${a.hour}\n🚗 Vehículo: ${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||""}\n🔧 Servicio: ${svc?.name||""}\n👷 Mecánico: ${a.mechanic||""}\n\n${a.notes?`Notas: ${a.notes}\n\n`:""}Cualquier consulta estamos a su disposición. ¡Gracias!`;
+            const msg = `Hola ${client?.name||""}, le escribe Tecno AutoAsisten CR.\n\n${statusMsg}\n\n📅 Fecha: ${fmtDate(a.date)}\n🕐 Hora: ${a.hour}\n🚗 Vehículo: ${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||""}\n🔧 Servicio: ${svcName}\n👷 Mecánico: ${a.mechanic||""}\n\n${a.notes?`Notas: ${a.notes}\n\n`:""}Cualquier consulta estamos a su disposición. ¡Gracias!`;
             return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
           })();
 
@@ -947,7 +974,7 @@ function ApptsPage({ data, save, toast }) {
               </div>
               <div style={{ flex:1, minWidth:160 }}>
                 <div style={{ fontWeight:700, fontSize:14 }}>{client?.name||"—"} <span style={{ color:C.textSm, fontWeight:400, fontSize:12 }}>· {vehicle?.plate}</span></div>
-                <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{svc?.name} · {a.mechanic}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{svcName} · {a.mechanic}</div>
                 {a.notes && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
@@ -996,8 +1023,14 @@ function ApptModal({ item, data, onSave, onClose }) {
         <Field label="Servicio">
           <select value={f.serviceId} onChange={e=>set("serviceId",e.target.value)} style={IS()}>
             {(data.services||SERVICES_CAT).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="__custom__">✏️ Escribir manualmente…</option>
           </select>
         </Field>
+        {f.serviceId==="__custom__" && (
+          <Field label="Describí el servicio">
+            <input value={f.customService||""} onChange={e=>set("customService",e.target.value)} placeholder="Ej: Cambio de correa de distribución…" style={IS()} />
+          </Field>
+        )}
         <Field label="Mecánico">
           <select value={f.mechanic} onChange={e=>set("mechanic",e.target.value)} style={IS()}>
             {data.workers.filter(w=>w.status==="active").map(w=><option key={w.id} value={w.name}>{w.name}</option>)}
@@ -2805,45 +2838,60 @@ function AuthPage({ onLogin }) {
 
   const handleBiometric = async () => {
     setError("");
-    if (!email.trim()) { setError("Ingresá tu correo primero para usar Face ID."); return; }
+    const savedEmail = localStorage.getItem("tac_remember_email");
+    const savedPw    = localStorage.getItem("tac_pw_enc");
+
+    if (!savedEmail || !savedPw) {
+      setError("Iniciá sesión con tu correo y contraseña una primera vez y activá 'Recordar mi correo'. Luego podrás usar Face ID.");
+      return;
+    }
+
     try {
-      // Use WebAuthn to verify the user biometrically
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-      const credential = await navigator.credentials.get({
+      // Check if we have a registered credential
+      const credId = localStorage.getItem("tac_cred_id");
+
+      if (!credId) {
+        // REGISTER: create a new credential tied to this device
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+        const userId = new Uint8Array(16);
+        window.crypto.getRandomValues(userId);
+
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp:   { name:"Tecno AutoAsisten CR", id: window.location.hostname },
+            user: { id: userId, name: savedEmail, displayName: savedEmail },
+            pubKeyCredParams: [{ type:"public-key", alg:-7 }, { type:"public-key", alg:-257 }],
+            authenticatorSelection: { userVerification:"required", authenticatorAttachment:"platform" },
+            timeout: 60000,
+          }
+        });
+        localStorage.setItem("tac_cred_id", btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
+        // Now log in with stored credentials
+        await loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin);
+        return;
+      }
+
+      // AUTHENTICATE: verify with existing credential
+      const challenge2 = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge2);
+      const rawId = Uint8Array.from(atob(credId), c=>c.charCodeAt(0));
+      await navigator.credentials.get({
         publicKey: {
-          challenge,
-          timeout: 60000,
+          challenge: challenge2,
+          allowCredentials: [{ type:"public-key", id: rawId }],
           userVerification: "required",
-          rpId: window.location.hostname,
+          timeout: 60000,
         }
       });
-      if (credential) {
-        // Biometric passed — try sign in with stored password if available
-        const storedPw = sessionStorage.getItem("tac_pw_temp");
-        if (storedPw) {
-          setPassword(storedPw);
-          // Auto-submit
-          setLoading(true);
-          const res = await auth.signIn(email.trim(), storedPw);
-          if (res.access_token) {
-            const userId = res.user?.id;
-            const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name,role`, {
-              headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
-            });
-            const rows = await checkRes.json();
-            const row  = rows?.[0];
-            if (!row) onLogin(res.access_token, res.user?.email||email.trim(), "admin");
-            else if (row.status==="approved") onLogin(res.access_token, row.name||res.user?.email, row.role||"client");
-            else setError("Cuenta pendiente de aprobación.");
-          } else setError("No se pudo verificar. Ingresá tu contraseña manualmente.");
-          setLoading(false);
-        } else {
-          setError("Ingresá tu contraseña una primera vez para activar Face ID.");
-        }
-      }
+      // Biometric passed — log in with stored credentials
+      await loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin);
+
     } catch(e) {
-      if (e.name !== "NotAllowedError") setError("Face ID no disponible en este momento.");
+      if (e.name === "NotAllowedError") setError("Face ID cancelado.");
+      else if (e.name === "InvalidStateError") setError("Ya hay una credencial registrada. Intentá de nuevo.");
+      else setError("Face ID no disponible en este dispositivo.");
     }
   };
 
@@ -2929,12 +2977,18 @@ function AuthPage({ onLogin }) {
         const userRow  = userRows?.[0];
 
         if (!userRow) {
-          if (rememberMe) localStorage.setItem("tac_remember_email", email.trim());
-          else localStorage.removeItem("tac_remember_email");
+          if (rememberMe) {
+            localStorage.setItem("tac_remember_email", email.trim());
+            const enc = btoa(password.split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join(""));
+            localStorage.setItem("tac_pw_enc", enc);
+          } else { localStorage.removeItem("tac_remember_email"); localStorage.removeItem("tac_pw_enc"); }
           onLogin(res.access_token, res.user?.email || email.trim(), "admin");
         } else if (userRow.status === "approved") {
-          if (rememberMe) localStorage.setItem("tac_remember_email", email.trim());
-          else localStorage.removeItem("tac_remember_email");
+          if (rememberMe) {
+            localStorage.setItem("tac_remember_email", email.trim());
+            const enc = btoa(password.split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join(""));
+            localStorage.setItem("tac_pw_enc", enc);
+          } else { localStorage.removeItem("tac_remember_email"); localStorage.removeItem("tac_pw_enc"); }
           onLogin(res.access_token, userRow.name || res.user?.email, userRow.role || "client");
         } else if (userRow.status === "pending") {
           setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
@@ -3073,7 +3127,7 @@ function AuthPage({ onLogin }) {
 
           {mode==="login" && biometricAvail && (
             <button onClick={handleBiometric} style={{ marginTop:10, width:"100%", padding:"11px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-              🔐 Usar Face ID / Huella digital
+              🔐 {localStorage.getItem("tac_cred_id") ? "Entrar con Face ID / Huella" : "Activar Face ID / Huella"}
             </button>
           )}
 
@@ -3523,8 +3577,16 @@ function ClientPortal({ session, onLogout }) {
                   <Field label="Servicio">
                     <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={IS()}>
                       {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                      <option value="__custom__">✏️ Escribir manualmente…</option>
                     </select>
                   </Field>
+                  {apptForm.serviceId==="__custom__" && (
+                    <div style={{ gridColumn:"span 2" }}>
+                      <Field label="Describí el servicio que necesitás">
+                        <input value={apptForm.customService||""} onChange={e=>setApptForm(f=>({...f,customService:e.target.value}))} placeholder="Ej: Revisión de transmisión automática…" style={IS()} />
+                      </Field>
+                    </div>
+                  )}
                   <Field label="Fecha">
                     <input type="date" value={apptForm.date} min={today()} onChange={e=>{
                       const newDate = e.target.value;
