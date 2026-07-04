@@ -128,7 +128,7 @@ const sb = {
 /* Map app keys to DB table names & field transforms */
 const TABLE = {
   clients:      { table:"clients",      toDb: r=>({ id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", id_num:r.idNum||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", idNum:r.id_num||"", notes:r.notes||"" }) },
-  vehicles:     { table:"vehicles",     toDb: r=>({ id:r.id, client_id:r.clientId, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }) },
+  vehicles:     { table:"vehicles",     toDb: r=>({ id:r.id, client_id:r.clientId, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"", photo_url:r.photoUrl||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"", photoUrl:r.photo_url||"" }) },
   workers:      { table:"workers",      toDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }) },
   appointments: { table:"appointments", toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, service_id:r.serviceId, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"", custom_service:r.customService||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, serviceId:r.service_id, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"", customService:r.custom_service||"" }) },
   orders:       { table:"orders",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanic_notes:r.mechanicNotes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanicNotes:r.mechanic_notes||"" }) },
@@ -336,6 +336,7 @@ const NAV = [
   { id:"ai_diag",     icon:"🤖", label:"IA Diagnóstico",     group:"ia" },
   { id:"ai_quote",    icon:"💬", label:"IA Presupuesto",     group:"ia" },
   { id:"ai_manual",   icon:"📖", label:"IA Manuales",        group:"ia" },
+  { id:"ai_assistant",icon:"🧠", label:"Asistente IA",       group:"ia" },
   { id:"inventory",   icon:"📦", label:"Inventario",         group:"gestión" },
   { id:"suppliers",   icon:"🏭", label:"Proveedores",        group:"gestión" },
   { id:"accounting",  icon:"💰", label:"Contabilidad",       group:"gestión" },
@@ -541,6 +542,7 @@ function MainApp({ session, onLogout }) {
           : page==="ai_diag"     ? <AIDiagPage     data={data} />
           : page==="ai_quote"    ? <AIQuotePage    data={data} />
           : page==="ai_manual"   ? <AIManualPage   data={data} />
+          : page==="ai_assistant" ? <AIAssistantPage data={data} save={save} toast={showToast} />
           : page==="users"       ? <UsersPage      session={session} />
           : page==="subcontracts"? <SubcontractsPage data={data} save={save} toast={showToast} />
           : page==="quotes"      ? <QuotesPage      data={data} save={save} toast={showToast} />
@@ -837,26 +839,38 @@ function VehiclesPage({ data, save, toast }) {
         {filtered.map(v=>{
           const client = data.clients.find(c=>c.id===v.clientId);
           return (
-            <div key={v.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                <div>
-                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <span style={{ fontWeight:700, fontSize:16 }}>{v.plate}</span>
-                    <span style={{ background:C.border, borderRadius:4, padding:"2px 8px", fontSize:11, color:C.textMd }}>{v.fuel}</span>
+            <div key={v.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
+              {/* Vehicle photo */}
+              {v.photoUrl && (
+                <div style={{ height:140, overflow:"hidden", position:"relative" }}>
+                  <img src={v.photoUrl} alt={v.plate} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                  <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(0,0,0,.7))", padding:"20px 16px 8px", display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
+                    <span style={{ fontWeight:800, fontSize:16, color:"#fff" }}>{v.plate}</span>
+                    <span style={{ fontSize:11, background:"rgba(255,255,255,.2)", color:"#fff", borderRadius:4, padding:"2px 8px" }}>{v.fuel}</span>
                   </div>
-                  <div style={{ fontWeight:600, fontSize:14, marginTop:3 }}>{v.year} {v.brand} {v.model}</div>
-                  <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>👤 {client?.name||"Sin cliente"} · {v.color}</div>
                 </div>
-                <div style={{ display:"flex", gap:6 }}>
-                  <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:v})} />
-                  <IBtn icon="🗑" red onClick={()=>setDelId(v.id)} />
+              )}
+              <div style={{ padding:"16px 18px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div>
+                    {!v.photoUrl && <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                      <span style={{ fontWeight:700, fontSize:16 }}>{v.plate}</span>
+                      <span style={{ background:C.border, borderRadius:4, padding:"2px 8px", fontSize:11, color:C.textMd }}>{v.fuel}</span>
+                    </div>}
+                    <div style={{ fontWeight:600, fontSize:14, marginTop:v.photoUrl?0:3 }}>{v.year} {v.brand} {v.model}</div>
+                    <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>👤 {client?.name||"Sin cliente"} · {v.color}</div>
+                  </div>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:v})} />
+                    <IBtn icon="🗑" red onClick={()=>setDelId(v.id)} />
+                  </div>
                 </div>
+                <div style={{ display:"flex", gap:12, marginTop:12 }}>
+                  <Stat label="Kilometraje" value={`${Number(v.km||0).toLocaleString()} km`} />
+                  {v.vin && <Stat label="VIN" value={v.vin.slice(-6)} />}
+                </div>
+                {v.notes && <div style={{ marginTop:10, fontSize:12, color:C.textSm, borderTop:`1px solid ${C.border}`, paddingTop:10 }}>💬 {v.notes}</div>}
               </div>
-              <div style={{ display:"flex", gap:12, marginTop:14 }}>
-                <Stat label="Kilometraje" value={`${Number(v.km||0).toLocaleString()} km`} />
-                {v.vin && <Stat label="VIN" value={v.vin.slice(-6)} />}
-              </div>
-              {v.notes && <div style={{ marginTop:10, fontSize:12, color:C.textSm, borderTop:`1px solid ${C.border}`, paddingTop:10 }}>💬 {v.notes}</div>}
             </div>
           );
         })}
@@ -871,10 +885,43 @@ function VehiclesPage({ data, save, toast }) {
 
 function VehicleModal({ item, clients, onSave, onClose }) {
   const [f, setF] = useState(item);
+  const [uploading, setUploading] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const FUELS = ["Gasolina","Diésel","Híbrido","Eléctrico"];
+  const fileRef = useRef(null);
+
+  const handlePhoto = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      set("photoUrl", ev.target.result);
+      setUploading(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   return (
-    <Modal title={item.id?"Editar vehículo":"Registrar vehículo"} onClose={onClose}>
+    <Modal title={item.id?"Editar vehículo":"Registrar vehículo"} onClose={onClose} wide>
+      {/* Photo upload */}
+      <div style={{ marginBottom:16 }}>
+        <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{ display:"none" }} />
+        <div onClick={()=>fileRef.current?.click()} style={{ cursor:"pointer", borderRadius:12, overflow:"hidden", border:`2px dashed ${f.photoUrl?C.green:C.border}`, height:140, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, position:"relative" }}>
+          {f.photoUrl
+            ? <img src={f.photoUrl} alt="Vehículo" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+            : <div style={{ textAlign:"center", color:C.textSm }}>
+                <div style={{ fontSize:32, marginBottom:6 }}>📷</div>
+                <div style={{ fontSize:13 }}>{uploading?"Cargando…":"Tocar para agregar foto del vehículo"}</div>
+              </div>
+          }
+          {f.photoUrl && <div style={{ position:"absolute", bottom:8, right:8, background:"rgba(0,0,0,.6)", borderRadius:8, padding:"4px 10px", fontSize:11, color:"#fff" }}>Tocar para cambiar</div>}
+        </div>
+        {f.photoUrl && <button onClick={()=>set("photoUrl","")} style={{ marginTop:6, fontSize:12, color:C.red, background:"none", border:"none", cursor:"pointer" }}>✕ Quitar foto</button>}
+      </div>
+
       <Grid2>
         <Field label="Cliente">
           <select value={f.clientId} onChange={e=>set("clientId",e.target.value)} style={IS()}>
@@ -975,7 +1022,8 @@ function ApptsPage({ data, save, toast }) {
               <div style={{ flex:1, minWidth:160 }}>
                 <div style={{ fontWeight:700, fontSize:14 }}>{client?.name||"—"} <span style={{ color:C.textSm, fontWeight:400, fontSize:12 }}>· {vehicle?.plate}</span></div>
                 <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{svcName} · {a.mechanic}</div>
-                {a.notes && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
+                {a.notes?.includes("[Solicitud electrónica]") && <span style={{ fontSize:10, fontWeight:700, background:`${C.cyan}22`, color:C.cyan, borderRadius:4, padding:"2px 7px", display:"inline-block", marginTop:3 }}>🖥️ Solicitud electrónica</span>}
+                {a.notes && !a.notes.includes("[Solicitud electrónica]") && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
                 <Pill label={sc?.label} color={sc?.color} bg={sc?.bg} />
@@ -3408,8 +3456,11 @@ function ClientPortal({ session, onLogout }) {
     setApptLoading(true);
     const newAppt = {
       id: uid(), clientId: myClient.id, vehicleId: apptForm.vehicleId,
-      serviceId: apptForm.serviceId, date: apptForm.date, hour: apptForm.hour,
-      status: "pending", notes: apptForm.notes,
+      serviceId: apptForm.serviceId,
+      customService: apptForm.serviceId==="__custom__" ? (apptForm.customService||"") : "",
+      date: apptForm.date, hour: apptForm.hour,
+      status: "pending",
+      notes: `[Solicitud electrónica] ${apptForm.notes||""}`.trim(),
       mechanic: workers[0]?.name || ""
     };
     await sb.upsert("appointments", TABLE.appointments.toDb(newAppt));
@@ -4249,5 +4300,176 @@ function ServiceReportModal({ order, data, existing, onSave, onClose }) {
 
       <ModalActions onSave={()=>{ if(f.worksDone.trim()) onSave(f); }} onClose={onClose} />
     </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   AI ASSISTANT PAGE — Asistente con acceso a datos reales
+═══════════════════════════════════════════════════ */
+function AIAssistantPage({ data, save, toast }) {
+  const [history, setHistory] = useState([
+    { role:"assistant", content:"¡Hola! Soy el asistente de Tecno AutoAsisten CR. Tengo acceso completo a los datos del taller. Puedo responder preguntas como:\n\n• ¿Cuántas citas tengo hoy?\n• ¿Qué órdenes están activas?\n• ¿Cuánto ingresé este mes?\n• ¿Quién es el cliente con más órdenes?\n\nTambién puedo ayudarte a actualizar estados de órdenes y citas. ¿En qué te ayudo?" }
+  ]);
+  const [question, setQuestion] = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const endRef = useRef(null);
+
+  const buildContext = () => {
+    const today = new Date().toISOString().slice(0,10);
+    const thisMonth = new Date().toISOString().slice(0,7);
+    const todayAppts = (data.appointments||[]).filter(a=>a.date===today);
+    const activeOrders = (data.orders||[]).filter(o=>o.status==="active");
+    const monthIncome = (data.orders||[]).filter(o=>o.status==="completed" && o.date?.startsWith(thisMonth)).reduce((s,o)=>s+o.total,0);
+    const pendingAppts = (data.appointments||[]).filter(a=>a.status==="pending");
+
+    return `Eres el asistente administrativo de Tecno AutoAsisten CR, un taller mecánico en Costa Rica.
+Hoy es ${today}. Moneda: Colones (₡).
+
+DATOS ACTUALES DEL TALLER:
+- Clientes: ${data.clients?.length||0}
+- Vehículos: ${data.vehicles?.length||0}
+- Citas HOY (${today}): ${todayAppts.length} → ${todayAppts.map(a=>{const c=data.clients?.find(x=>x.id===a.clientId);return `${c?.name||"?"} a las ${a.hour} (${a.status})`;}).join(", ")||"Ninguna"}
+- Citas pendientes de confirmar: ${pendingAppts.length}
+- Órdenes activas: ${activeOrders.length} → ${activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return `${c?.name||"?"} (₡${o.total})`;}).join(", ")||"Ninguna"}
+- Ingresos del mes (${thisMonth}): ₡${monthIncome.toLocaleString("es-CR")}
+- Trabajadores activos: ${(data.workers||[]).filter(w=>w.status==="active").map(w=>w.name).join(", ")||"Ninguno"}
+- Inventario con stock bajo: ${(data.inventory||[]).filter(i=>i.qty<=i.minQty).map(i=>i.name).join(", ")||"Ninguno"}
+
+LISTA DE CITAS (próximas 7 días):
+${(data.appointments||[]).filter(a=>a.date>=today).slice(0,10).map(a=>{
+  const c=data.clients?.find(x=>x.id===a.clientId);
+  const v=data.vehicles?.find(x=>x.id===a.vehicleId);
+  return `ID:${a.id} | ${a.date} ${a.hour} | ${c?.name||"?"} | ${v?.plate||"?"} | ${a.status}`;
+}).join("\n")||"Ninguna"}
+
+ÓRDENES ACTIVAS:
+${activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return `ID:${o.id} | ${c?.name||"?"} | ₡${o.total} | ${o.mechanic}`;}).join("\n")||"Ninguna"}
+
+Responde en español de Costa Rica. Sé conciso y práctico. Si el usuario pide actualizar algo, incluye al final del mensaje una línea con formato JSON así:
+ACTION: {"type":"update_appointment","id":"xxx","status":"confirmed"}
+o: ACTION: {"type":"update_order","id":"xxx","status":"completed"}
+Solo incluye ACTION si el usuario explícitamente pide hacer un cambio.`;
+  };
+
+  const handleAction = async (actionStr) => {
+    try {
+      const action = JSON.parse(actionStr);
+      if (action.type === "update_appointment") {
+        const list = (data.appointments||[]).map(a=>a.id===action.id?{...a,status:action.status}:a);
+        save({ appointments:list });
+        toast(`Cita actualizada a: ${action.status}`);
+      } else if (action.type === "update_order") {
+        const list = (data.orders||[]).map(o=>o.id===action.id?{...o,status:action.status}:o);
+        save({ orders:list });
+        toast(`Orden actualizada a: ${action.status}`);
+      }
+    } catch(e) { console.error("Action parse error:", e); }
+  };
+
+  const send = async () => {
+    if (!question.trim() || loading) return;
+    const q = question.trim();
+    setQuestion("");
+    const newHistory = [...history, { role:"user", content:q }];
+    setHistory(newHistory);
+    setLoading(true);
+
+    try {
+      const msgs = newHistory.map(m=>({ role:m.role, content:m.content }));
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({
+          model:"claude-sonnet-4-6",
+          max_tokens:1000,
+          system: buildContext(),
+          messages: msgs
+        })
+      });
+      const d = await res.json();
+      let answer = d.content?.map(b=>b.text||"").join("") || "Sin respuesta.";
+
+      // Extract and execute action if present
+      const actionMatch = answer.match(/ACTION:\s*(\{[^}]+\})/);
+      if (actionMatch) {
+        await handleAction(actionMatch[1]);
+        answer = answer.replace(/ACTION:\s*\{[^}]+\}/, "").trim();
+        answer += "\n\n✅ Acción ejecutada correctamente.";
+      }
+
+      setHistory(h=>[...h, { role:"assistant", content:answer }]);
+    } catch(e) {
+      setHistory(h=>[...h, { role:"assistant", content:"Error al conectar. Intentá de nuevo." }]);
+    }
+    setLoading(false);
+    setTimeout(()=>endRef.current?.scrollIntoView({ behavior:"smooth" }),100);
+  };
+
+  // Quick action buttons
+  const quickActions = [
+    "¿Cuántas citas tengo hoy?",
+    "¿Qué órdenes están activas?",
+    "¿Cuánto ingresé este mes?",
+    "¿Hay productos con stock bajo?",
+    "¿Cuántas citas pendientes de confirmar?",
+    "Resumen del taller hoy",
+  ];
+
+  return (
+    <div style={{ maxWidth:800, margin:"0 auto", display:"flex", flexDirection:"column", height:"calc(100vh - 160px)" }}>
+      <AIPageHeader icon="🧠" title="Asistente IA del Taller" desc="Preguntá sobre citas, órdenes, clientes, ingresos — o pedile que actualice estados." />
+
+      {/* Quick actions */}
+      {history.length<=1 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, color:C.textSm, marginBottom:8 }}>Acciones rápidas:</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {quickActions.map(q=>(
+              <button key={q} onClick={()=>setQuestion(q)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.textMd, cursor:"pointer", fontSize:12, transition:"all .1s" }}>
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Chat */}
+      <div style={{ flex:1, overflowY:"auto", border:`1px solid ${C.border}`, borderRadius:12, padding:"16px", marginBottom:14, background:C.card, display:"flex", flexDirection:"column", gap:16 }}>
+        {history.map((m,i)=>(
+          <div key={i} style={{ display:"flex", gap:10, justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
+            {m.role==="assistant" && (
+              <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>🧠</div>
+            )}
+            <div style={{ maxWidth:"78%", background:m.role==="user"?`${C.blue}22`:C.bg, border:`1px solid ${m.role==="user"?C.blueHi:C.border}`, borderRadius:12, padding:"12px 16px", fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap" }}>
+              {m.content}
+            </div>
+            {m.role==="user" && (
+              <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👤</div>
+            )}
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🧠</div>
+            <div style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 16px", display:"flex", alignItems:"center", gap:8, color:C.textMd, fontSize:13 }}>
+              <Spinner />Consultando datos del taller…
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ display:"flex", gap:10 }}>
+        <input
+          value={question}
+          onChange={e=>setQuestion(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey&&!loading) { e.preventDefault(); send(); } }}
+          placeholder="Preguntá algo o pedí una acción… (Enter para enviar)"
+          style={{...IS(), flex:1, padding:"12px 16px", fontSize:14}}
+        />
+        <button onClick={send} disabled={loading||!question.trim()} style={{ padding:"12px 20px", borderRadius:10, border:"none", background:loading||!question.trim()?C.border:`linear-gradient(135deg,${C.purple},${C.blue})`, color:"#fff", fontWeight:700, cursor:loading||!question.trim()?"default":"pointer", fontSize:16 }}>→</button>
+      </div>
+    </div>
   );
 }
