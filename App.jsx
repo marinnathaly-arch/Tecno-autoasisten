@@ -54,33 +54,6 @@ const auth = {
   }
 };
 
-
-/* Helper: login with stored obfuscated password */
-async function loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin) {
-  try {
-    // Simple XOR deobfuscation
-    const pw = atob(savedPw).split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join("");
-    setLoading(true);
-    const res = await auth.signIn(savedEmail, pw);
-    if (res.access_token) {
-      const userId = res.user?.id;
-      const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name,role`, {
-        headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
-      });
-      const rows = await checkRes.json();
-      const row  = rows?.[0];
-      if (!row) onLogin(res.access_token, res.user?.email||savedEmail, "admin");
-      else if (row.status==="approved") onLogin(res.access_token, row.name||res.user?.email, row.role||"client");
-      else setError("Cuenta pendiente de aprobación.");
-    } else {
-      setError("No se pudo verificar. Ingresá tu contraseña manualmente.");
-    }
-  } catch(e) {
-    setError("Error de conexión.");
-  }
-  setLoading(false);
-}
-
 const sb = {
   async get(table, token) {
     const tk = token || localStorage.getItem("tac_token") || SB_KEY;
@@ -128,15 +101,13 @@ const sb = {
 /* Map app keys to DB table names & field transforms */
 const TABLE = {
   clients:      { table:"clients",      toDb: r=>({ id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", id_num:r.idNum||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", idNum:r.id_num||"", notes:r.notes||"" }) },
-  vehicles:     { table:"vehicles",     toDb: r=>({ id:r.id, client_id:r.clientId, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"", photo_url:r.photoUrl||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"", photoUrl:r.photo_url||"" }) },
+  vehicles:     { table:"vehicles",     toDb: r=>({ id:r.id, client_id:r.clientId, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }) },
   workers:      { table:"workers",      toDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }) },
-  appointments: { table:"appointments", toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, service_id:r.serviceId, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"", custom_service:r.customService||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, serviceId:r.service_id, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"", customService:r.custom_service||"" }) },
-  orders:       { table:"orders",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanic_notes:r.mechanicNotes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanicNotes:r.mechanic_notes||"" }) },
+  appointments: { table:"appointments", toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, service_id:r.serviceId, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, serviceId:r.service_id, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"" }) },
+  orders:       { table:"orders",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"" }) },
   suppliers:    { table:"suppliers",    toDb: r=>({ id:r.id, name:r.name, contact:r.contact||"", phone:r.phone||"", email:r.email||"", category:r.category||"", pay_terms:r.payTerms||"", notes:r.notes||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, contact:r.contact||"", phone:r.phone||"", email:r.email||"", category:r.category||"", payTerms:r.pay_terms||"", notes:r.notes||"", status:r.status||"active" }) },
   inventory:    { table:"inventory",    toDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplier_id:r.supplierId||null, qty:r.qty||0, min_qty:r.minQty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplierId:r.supplier_id||"", qty:r.qty||0, minQty:r.min_qty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }) },
   accounting:   { table:"accounting",   toDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }) },
-  service_reports: { table:"service_reports", toDb: r=>({ id:r.id, order_id:r.orderId, client_id:r.clientId, vehicle_id:r.vehicleId, mechanic:r.mechanic||"", works_done:r.worksDone||"", observations:r.observations||"", km_at_service:r.kmAtService||0, created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, orderId:r.order_id, clientId:r.client_id, vehicleId:r.vehicle_id, mechanic:r.mechanic||"", worksDone:r.works_done||"", observations:r.observations||"", kmAtService:r.km_at_service||0, createdAt:r.created_at||"" }) },
-  invoices:        { table:"invoices", toDb: r=>({ id:r.id, client_id:r.clientId, order_id:r.orderId||null, legal_name:r.legalName||"", id_num:r.idNum||"", address:r.address||"", email:r.email||"", phone:r.phone||"", status:r.status||"pending", notes:r.notes||"", created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, clientId:r.client_id, orderId:r.order_id||"", legalName:r.legal_name||"", idNum:r.id_num||"", address:r.address||"", email:r.email||"", phone:r.phone||"", status:r.status||"pending", notes:r.notes||"", createdAt:r.created_at||"" }) },
   library:      { table:"library",      toDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", upload_date:r.uploadDate||"", file_size:r.fileSize||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", uploadDate:r.upload_date||"", fileSize:r.file_size||"", notes:r.notes||"" }) },
   services:     { table:"services",     toDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }) },
   subcontracts: { table:"subcontracts", toDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", lead_time:r.leadTime||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", leadTime:r.lead_time||"", notes:r.notes||"" }) },
@@ -144,10 +115,10 @@ const TABLE = {
 };
 
 async function loadAll() {
-  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes,reports,invoices] = await Promise.all([
+  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes] = await Promise.all([
     sb.get("clients"), sb.get("vehicles"), sb.get("workers"), sb.get("appointments"),
     sb.get("orders"), sb.get("suppliers"), sb.get("inventory"), sb.get("accounting"), sb.get("library"),
-    sb.get("services"), sb.get("subcontracts"), sb.get("quotes"), sb.get("service_reports"), sb.get("invoices")
+    sb.get("services"), sb.get("subcontracts"), sb.get("quotes")
   ]);
   const loadedServices = (services||[]).map(TABLE.services.fromDb);
   return {
@@ -163,8 +134,6 @@ async function loadAll() {
     services:     loadedServices.length ? loadedServices : SERVICES_CAT,
     subcontracts: (subcontracts||[]).map(TABLE.subcontracts.fromDb),
     quotes:       (quotes||[]).map(TABLE.quotes.fromDb),
-    reports:      (reports||[]).map(TABLE.service_reports.fromDb),
-    invoices:     (invoices||[]).map(TABLE.invoices.fromDb),
   };
 }
 
@@ -266,15 +235,6 @@ function getHoursForDate(dateStr) {
 
 const SCHEDULE_LABEL = "Lun-Vie 4:00pm-10:00pm · Sáb 7:00am-5:00pm · Dom cerrado";
 
-// Admin has full access — all hours, all days
-const ADMIN_HOURS = [
-  "0:00","0:30","1:00","1:30","2:00","2:30","3:00","3:30","4:00","4:30",
-  "5:00","5:30","6:00","6:30","7:00","7:30","8:00","8:30","9:00","9:30",
-  "10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30",
-  "15:00","15:30","16:00","16:30","17:00","17:30","18:00","18:30","19:00","19:30",
-  "20:00","20:30","21:00","21:30","22:00","22:30","23:00","23:30"
-];
-
 const HOURS = ["8:00","8:30","9:00","9:30","10:00","10:30","11:00","11:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"];
 
 const SEED_APPTS = [
@@ -344,7 +304,9 @@ const NAV = [
   { id:"services",    icon:"🔧", label:"Servicios",          group:"taller" },
   { id:"workers",     icon:"👷", label:"Equipo",             group:"taller" },
   { id:"metrics",     icon:"📊", label:"Métricas",           group:"análisis" },
-  { id:"ai_assistant",icon:"🧠", label:"Asistente IA",       group:"ia" },
+  { id:"ai_diag",     icon:"🤖", label:"IA Diagnóstico",     group:"ia" },
+  { id:"ai_quote",    icon:"💬", label:"IA Presupuesto",     group:"ia" },
+  { id:"ai_manual",   icon:"📖", label:"IA Manuales",        group:"ia" },
   { id:"inventory",   icon:"📦", label:"Inventario",         group:"gestión" },
   { id:"suppliers",   icon:"🏭", label:"Proveedores",        group:"gestión" },
   { id:"accounting",  icon:"💰", label:"Contabilidad",       group:"gestión" },
@@ -352,7 +314,6 @@ const NAV = [
   { id:"users",       icon:"🔐", label:"Usuarios",          group:"admin" },
   { id:"subcontracts",icon:"🤝", label:"Subcontrataciones", group:"gestión" },
   { id:"quotes",      icon:"💬", label:"Cotizaciones",      group:"taller" },
-  { id:"invoices",    icon:"🧾", label:"Facturas",          group:"taller" },
 ];
 
 const GROUPS = {
@@ -467,7 +428,7 @@ function MainApp({ session, onLogout }) {
         console.error("Supabase error:", e);
         setDbReady(false);
         // Fallback to seed data if DB unreachable
-        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[], reports:[], invoices:[] });
+        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[] });
       }
     })();
   }, []);
@@ -548,11 +509,12 @@ function MainApp({ session, onLogout }) {
           : page==="accounting"  ? <AccountingPage data={data} save={save} toast={showToast} />
           : page==="library"     ? <LibraryPage    data={data} save={save} toast={showToast} />
           : page==="intake"      ? <IntakePage     data={data} save={save} toast={showToast} />
-          : page==="ai_assistant" ? <AIAssistantPage data={data} save={save} toast={showToast} />
+          : page==="ai_diag"     ? <AIDiagPage     data={data} />
+          : page==="ai_quote"    ? <AIQuotePage    data={data} />
+          : page==="ai_manual"   ? <AIManualPage   data={data} />
           : page==="users"       ? <UsersPage      session={session} />
           : page==="subcontracts"? <SubcontractsPage data={data} save={save} toast={showToast} />
           : page==="quotes"      ? <QuotesPage      data={data} save={save} toast={showToast} />
-          : page==="invoices"    ? <InvoicesPage    data={data} save={save} toast={showToast} />
           : null}
         </div>
       </div>
@@ -684,7 +646,7 @@ function Dashboard({ data, setPage }) {
           {upcoming.map(a=>{
             const client = data.clients.find(c=>c.id===a.clientId);
             const vehicle= data.vehicles.find(v=>v.id===a.vehicleId);
-            const svc    = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId); const svcName = a.serviceId==="__custom__" ? (a.customService||"Servicio personalizado") : svc?.name||a.serviceId;
+            const svc    = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
             const sc     = STATUS_COLORS[a.status];
             return (
               <div key={a.id} style={{ display:"flex", gap:14, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
@@ -846,38 +808,26 @@ function VehiclesPage({ data, save, toast }) {
         {filtered.map(v=>{
           const client = data.clients.find(c=>c.id===v.clientId);
           return (
-            <div key={v.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-              {/* Vehicle photo */}
-              {v.photoUrl && (
-                <div style={{ height:140, overflow:"hidden", position:"relative" }}>
-                  <img src={v.photoUrl} alt={v.plate} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                  <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(0,0,0,.7))", padding:"20px 16px 8px", display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
-                    <span style={{ fontWeight:800, fontSize:16, color:"#fff" }}>{v.plate}</span>
-                    <span style={{ fontSize:11, background:"rgba(255,255,255,.2)", color:"#fff", borderRadius:4, padding:"2px 8px" }}>{v.fuel}</span>
+            <div key={v.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <span style={{ fontWeight:700, fontSize:16 }}>{v.plate}</span>
+                    <span style={{ background:C.border, borderRadius:4, padding:"2px 8px", fontSize:11, color:C.textMd }}>{v.fuel}</span>
                   </div>
+                  <div style={{ fontWeight:600, fontSize:14, marginTop:3 }}>{v.year} {v.brand} {v.model}</div>
+                  <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>👤 {client?.name||"Sin cliente"} · {v.color}</div>
                 </div>
-              )}
-              <div style={{ padding:"16px 18px" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                  <div>
-                    {!v.photoUrl && <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                      <span style={{ fontWeight:700, fontSize:16 }}>{v.plate}</span>
-                      <span style={{ background:C.border, borderRadius:4, padding:"2px 8px", fontSize:11, color:C.textMd }}>{v.fuel}</span>
-                    </div>}
-                    <div style={{ fontWeight:600, fontSize:14, marginTop:v.photoUrl?0:3 }}>{v.year} {v.brand} {v.model}</div>
-                    <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>👤 {client?.name||"Sin cliente"} · {v.color}</div>
-                  </div>
-                  <div style={{ display:"flex", gap:6 }}>
-                    <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:v})} />
-                    <IBtn icon="🗑" red onClick={()=>setDelId(v.id)} />
-                  </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:v})} />
+                  <IBtn icon="🗑" red onClick={()=>setDelId(v.id)} />
                 </div>
-                <div style={{ display:"flex", gap:12, marginTop:12 }}>
-                  <Stat label="Kilometraje" value={`${Number(v.km||0).toLocaleString()} km`} />
-                  {v.vin && <Stat label="VIN" value={v.vin.slice(-6)} />}
-                </div>
-                {v.notes && <div style={{ marginTop:10, fontSize:12, color:C.textSm, borderTop:`1px solid ${C.border}`, paddingTop:10 }}>💬 {v.notes}</div>}
               </div>
+              <div style={{ display:"flex", gap:12, marginTop:14 }}>
+                <Stat label="Kilometraje" value={`${Number(v.km||0).toLocaleString()} km`} />
+                {v.vin && <Stat label="VIN" value={v.vin.slice(-6)} />}
+              </div>
+              {v.notes && <div style={{ marginTop:10, fontSize:12, color:C.textSm, borderTop:`1px solid ${C.border}`, paddingTop:10 }}>💬 {v.notes}</div>}
             </div>
           );
         })}
@@ -892,43 +842,10 @@ function VehiclesPage({ data, save, toast }) {
 
 function VehicleModal({ item, clients, onSave, onClose }) {
   const [f, setF] = useState(item);
-  const [uploading, setUploading] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const FUELS = ["Gasolina","Diésel","Híbrido","Eléctrico"];
-  const fileRef = useRef(null);
-
-  const handlePhoto = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return;
-    setUploading(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      set("photoUrl", ev.target.result);
-      setUploading(false);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
   return (
-    <Modal title={item.id?"Editar vehículo":"Registrar vehículo"} onClose={onClose} wide>
-      {/* Photo upload */}
-      <div style={{ marginBottom:16 }}>
-        <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{ display:"none" }} />
-        <div onClick={()=>fileRef.current?.click()} style={{ cursor:"pointer", borderRadius:12, overflow:"hidden", border:`2px dashed ${f.photoUrl?C.green:C.border}`, height:140, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, position:"relative" }}>
-          {f.photoUrl
-            ? <img src={f.photoUrl} alt="Vehículo" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-            : <div style={{ textAlign:"center", color:C.textSm }}>
-                <div style={{ fontSize:32, marginBottom:6 }}>📷</div>
-                <div style={{ fontSize:13 }}>{uploading?"Cargando…":"Tocar para agregar foto del vehículo"}</div>
-              </div>
-          }
-          {f.photoUrl && <div style={{ position:"absolute", bottom:8, right:8, background:"rgba(0,0,0,.6)", borderRadius:8, padding:"4px 10px", fontSize:11, color:"#fff" }}>Tocar para cambiar</div>}
-        </div>
-        {f.photoUrl && <button onClick={()=>set("photoUrl","")} style={{ marginTop:6, fontSize:12, color:C.red, background:"none", border:"none", cursor:"pointer" }}>✕ Quitar foto</button>}
-      </div>
-
+    <Modal title={item.id?"Editar vehículo":"Registrar vehículo"} onClose={onClose}>
       <Grid2>
         <Field label="Cliente">
           <select value={f.clientId} onChange={e=>set("clientId",e.target.value)} style={IS()}>
@@ -1008,7 +925,7 @@ function ApptsPage({ data, save, toast }) {
         {filtered.map(a=>{
           const client  = data.clients.find(c=>c.id===a.clientId);
           const vehicle = data.vehicles.find(v=>v.id===a.vehicleId);
-          const svc     = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId); const svcName = a.serviceId==="__custom__" ? (a.customService||"Servicio personalizado") : svc?.name||a.serviceId;
+          const svc     = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId);
           const sc      = STATUS_COLORS[a.status];
 
           const waLink = (() => {
@@ -1016,7 +933,7 @@ function ApptsPage({ data, save, toast }) {
             if (!phone) return null;
             const waPhone = phone.startsWith("506") ? phone : `506${phone}`;
             const statusMsg = a.status==="confirmed" ? "✅ *Su cita ha sido CONFIRMADA.*" : a.status==="cancelled" ? "❌ *Su cita ha sido CANCELADA.*" : "📅 *Recordatorio de cita.*";
-            const msg = `Hola ${client?.name||""}, le escribe Tecno AutoAsisten CR.\n\n${statusMsg}\n\n📅 Fecha: ${fmtDate(a.date)}\n🕐 Hora: ${a.hour}\n🚗 Vehículo: ${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||""}\n🔧 Servicio: ${svcName}\n👷 Mecánico: ${a.mechanic||""}\n\n${a.notes?`Notas: ${a.notes}\n\n`:""}Cualquier consulta estamos a su disposición. ¡Gracias!`;
+            const msg = `Hola ${client?.name||""}, le escribe Tecno AutoAsisten CR.\n\n${statusMsg}\n\n📅 Fecha: ${fmtDate(a.date)}\n🕐 Hora: ${a.hour}\n🚗 Vehículo: ${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||""}\n🔧 Servicio: ${svc?.name||""}\n👷 Mecánico: ${a.mechanic||""}\n\n${a.notes?`Notas: ${a.notes}\n\n`:""}Cualquier consulta estamos a su disposición. ¡Gracias!`;
             return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
           })();
 
@@ -1028,9 +945,8 @@ function ApptsPage({ data, save, toast }) {
               </div>
               <div style={{ flex:1, minWidth:160 }}>
                 <div style={{ fontWeight:700, fontSize:14 }}>{client?.name||"—"} <span style={{ color:C.textSm, fontWeight:400, fontSize:12 }}>· {vehicle?.plate}</span></div>
-                <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{svcName} · {a.mechanic}</div>
-                {a.notes?.includes("[Solicitud electrónica]") && <span style={{ fontSize:10, fontWeight:700, background:`${C.cyan}22`, color:C.cyan, borderRadius:4, padding:"2px 7px", display:"inline-block", marginTop:3 }}>🖥️ Solicitud electrónica</span>}
-                {a.notes && !a.notes.includes("[Solicitud electrónica]") && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
+                <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{svc?.name} · {a.mechanic}</div>
+                {a.notes && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
                 <Pill label={sc?.label} color={sc?.color} bg={sc?.bg} />
@@ -1078,23 +994,17 @@ function ApptModal({ item, data, onSave, onClose }) {
         <Field label="Servicio">
           <select value={f.serviceId} onChange={e=>set("serviceId",e.target.value)} style={IS()}>
             {(data.services||SERVICES_CAT).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-            <option value="__custom__">✏️ Escribir manualmente…</option>
           </select>
         </Field>
-        {f.serviceId==="__custom__" && (
-          <Field label="Describí el servicio">
-            <input value={f.customService||""} onChange={e=>set("customService",e.target.value)} placeholder="Ej: Cambio de correa de distribución…" style={IS()} />
-          </Field>
-        )}
         <Field label="Mecánico">
           <select value={f.mechanic} onChange={e=>set("mechanic",e.target.value)} style={IS()}>
             {data.workers.filter(w=>w.status==="active").map(w=><option key={w.id} value={w.name}>{w.name}</option>)}
           </select>
         </Field>
-        <Field label="Fecha"><input type="date" value={f.date} onChange={e=>set("date",e.target.value)} style={IS()} /></Field>
+        <Field label="Fecha"><input type="date" value={f.date} min={today()} onChange={e=>set("date",e.target.value)} style={IS()} /></Field>
         <Field label="Hora">
           <select value={f.hour} onChange={e=>set("hour",e.target.value)} style={IS()}>
-            {ADMIN_HOURS.map(h=><option key={h} value={h}>{h}</option>)}
+            {(getHoursForDate(f.date).length ? getHoursForDate(f.date) : HOURS).map(h=><option key={h} value={h}>{h}</option>)}
           </select>
         </Field>
         <Field label="Estado">
@@ -1123,7 +1033,6 @@ function OrdersPage({ data, save, toast }) {
   const [detail, setDetail] = useState(null);
   const [delId,  setDelId]  = useState(null);
   const [filter, setFilter] = useState("all");
-  const [reportModal, setReportModal] = useState(null);
 
   const filtered = data.orders.filter(o=>filter==="all"||o.status===filter);
 
@@ -1139,16 +1048,6 @@ function OrdersPage({ data, save, toast }) {
 
   const upd = (id,patch) => { save({ orders:data.orders.map(o=>o.id===id?{...o,...patch}:o) }); toast("Estado actualizado"); };
   const del = (id) => { save({ orders:data.orders.filter(o=>o.id!==id) }); toast("Eliminada","err"); setDelId(null); };
-
-  const saveReport = async (report) => {
-    const list = [...(data.reports||[])];
-    const existing = list.findIndex(r=>r.orderId===report.orderId);
-    if (existing>=0) list[existing]=report;
-    else list.push(report);
-    save({ reports:list });
-    toast("Informe guardado ✓");
-    setReportModal(null);
-  };
 
   const newDefault = { clientId:data.clients[0]?.id||"", vehicleId:data.vehicles[0]?.id||"", services:[], parts:[], status:"active", date:today(), notes:"", mechanic:data.workers[0]?.name||"", total:0 };
 
@@ -1166,15 +1065,6 @@ function OrdersPage({ data, save, toast }) {
           const client  = data.clients.find(c=>c.id===o.clientId);
           const vehicle = data.vehicles.find(v=>v.id===o.vehicleId);
           const sc      = ORDER_STATUS[o.status];
-
-          const waReadyLink = (() => {
-            const phone = (client?.phone||"").replace(/\D/g,"");
-            if (!phone || o.status !== "completed") return null;
-            const waPhone = phone.startsWith("506") ? phone : `506${phone}`;
-            const msg = `Hola ${client?.name||""}! 🎉\n\nLe informamos que su vehículo *${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||}* ya está *LISTO* para retirar en Tecno AutoAsisten CR.\n\n✅ Servicios realizados:\n${o.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).map(n=>`• ${n}`).join("\n")}\n\n💰 Total: ${fmtCRC(o.total)}\n\n¡Gracias por confiar en nosotros! Cualquier consulta estamos a su disposición.`;
-            return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
-          })();
-
           return (
             <div key={o.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px" }}>
               <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" }}>
@@ -1182,24 +1072,14 @@ function OrdersPage({ data, save, toast }) {
                   <div style={{ fontWeight:700, fontSize:15 }}>{client?.name||"—"} <span style={{ fontWeight:400, color:C.textSm, fontSize:13 }}>· {vehicle?.plate}</span></div>
                   <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.mechanic} · {fmtDate(o.date)}</div>
                   <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).join(", ")}</div>
-                  {o.mechanicNotes && <div style={{ fontSize:12, color:C.blueHi, marginTop:4 }}>🔧 {o.mechanicNotes}</div>}
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(o.total)}</div>
                   <Pill label={sc?.label} color={sc?.color} bg={sc?.bg} />
                 </div>
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <div style={{ display:"flex", gap:6 }}>
                   <TBtn label="Ver" color={C.blueHi} onClick={()=>setDetail(o)} />
                   {o.status==="active" && <TBtn label="Completar" color={C.green} onClick={()=>upd(o.id,{status:"completed"})} />}
-                  {o.status==="completed" && (
-                    <TBtn label={`📋 ${(data.reports||[]).find(r=>r.orderId===o.id) ? "Ver informe" : "Llenar informe"}`} color={C.purple} onClick={()=>setReportModal(o)} />
-                  )}
-                  {waReadyLink && (
-                    <a href={waReadyLink} target="_blank" rel="noopener noreferrer"
-                      style={{ padding:"6px 10px", borderRadius:7, border:`1px solid #25D36644`, background:`#25D36618`, color:"#25D366", fontWeight:700, fontSize:12, textDecoration:"none", display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
-                      📲 Avisar listo
-                    </a>
-                  )}
                   <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:o})} />
                   <IBtn icon="🗑" red onClick={()=>setDelId(o.id)} />
                 </div>
@@ -1213,7 +1093,6 @@ function OrdersPage({ data, save, toast }) {
       {modal  && <OrderModal item={modal.item} data={data} onSave={upsert} onClose={()=>setModal(null)} />}
       {detail && <OrderDetail order={detail} data={data} onClose={()=>setDetail(null)} />}
       {delId  && <Confirm msg="¿Eliminar esta orden?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
-      {reportModal && <ServiceReportModal order={reportModal} data={data} existing={(data.reports||[]).find(r=>r.orderId===reportModal.id)} onSave={saveReport} onClose={()=>setReportModal(null)} />}
     </div>
   );
 }
@@ -1273,10 +1152,7 @@ function OrderModal({ item, data, onSave, onClose }) {
         ))}
       </div>
 
-      <Field label="Notas del cliente"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
-      <div style={{ marginTop:12 }}>
-        <Field label="🔧 Notas del mecánico (proceso / diagnóstico)"><textarea value={f.mechanicNotes||""} onChange={e=>set("mechanicNotes",e.target.value)} rows={2} placeholder="Ej: Se encontró desgaste en pastillas, se reemplazaron…" style={{...IS(),resize:"vertical"}} /></Field>
-      </div>
+      <Field label="Notas"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
 
       <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginTop:14, display:"flex", justifyContent:"space-between" }}>
         <span style={{ color:C.textMd, fontSize:14 }}>Total estimado</span>
@@ -2516,17 +2392,319 @@ function IntakePage({ data, save, toast }) {
   );
 }
 
-/* =======================================================
-   UNIFIED AI ASSISTANT
-======================================================= */
-async function callClaude(systemPrompt, messages) {
+/* ═══════════════════════════════════════════════════
+   AI HELPER — shared Claude API call
+═══════════════════════════════════════════════════ */
+async function callClaude(systemPrompt, userMsg) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method:"POST",
     headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1500, system:systemPrompt, messages })
+    body: JSON.stringify({
+      model:"claude-sonnet-4-6",
+      max_tokens:1000,
+      system: systemPrompt,
+      messages:[{ role:"user", content:userMsg }]
+    })
   });
-  const d = await res.json();
-  return d.content?.map(b=>b.text||"").join("") || "Sin respuesta.";
+  const data = await res.json();
+  return data.content?.map(b=>b.text||"").join("") || "Sin respuesta";
+}
+
+/* ═══════════════════════════════════════════════════
+   AI DIAGNOSIS PAGE
+═══════════════════════════════════════════════════ */
+function AIDiagPage({ data }) {
+  const [brand,   setBrand]   = useState("");
+  const [model,   setModel]   = useState("");
+  const [year,    setYear]    = useState("");
+  const [km,      setKm]      = useState("");
+  const [problem, setProblem] = useState("");
+  const [codes,   setCodes]   = useState("");
+  const [result,  setResult]  = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const run = async () => {
+    if (!problem.trim()) return;
+    setLoading(true); setResult(null);
+    const sys = `Eres un mecánico automotriz experto con más de 20 años de experiencia en diagnóstico de vehículos. Respondes en español de Costa Rica. Siempre estructuras tu respuesta en secciones claras: CAUSAS PROBABLES, DIAGNÓSTICO RECOMENDADO, PIEZAS POSIBLES A REEMPLAZAR, y ADVERTENCIAS DE SEGURIDAD. Sé específico y práctico.`;
+    const msg = `Vehículo: ${year||"?"} ${brand||"?"} ${model||"?"}${km?`, ${km} km`:""}.\nProblema reportado: ${problem}${codes?`\nCódigos OBD: ${codes}`:""}\n\nProporciona un diagnóstico detallado.`;
+    try {
+      const r = await callClaude(sys, msg);
+      setResult(r);
+    } catch { setResult("Error al conectar con la IA. Intenta nuevamente."); }
+    setLoading(false);
+  };
+
+  const quickFill = (v) => {
+    const vehicle = data.vehicles.find(x=>x.id===v);
+    if (vehicle) { setBrand(vehicle.brand); setModel(vehicle.model); setYear(String(vehicle.year)); setKm(String(vehicle.km)); }
+  };
+
+  return (
+    <div style={{ maxWidth:800, margin:"0 auto" }}>
+      <AIPageHeader icon="🤖" title="Asistente de Diagnóstico IA" desc="Describe el problema del vehículo y la IA te sugiere causas, diagnóstico y piezas a revisar." />
+
+      {data.vehicles.length>0 && (
+        <div style={{ marginBottom:16 }}>
+          <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:6 }}>Cargar datos de vehículo registrado</label>
+          <select onChange={e=>quickFill(e.target.value)} style={{...IS(), maxWidth:340}}>
+            <option value="">— Seleccionar vehículo —</option>
+            {data.vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} · {v.year} {v.brand} {v.model}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px", marginBottom:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginBottom:14 }}>
+          <Field label="Marca"><input value={brand} onChange={e=>setBrand(e.target.value)} placeholder="Toyota" style={IS()} /></Field>
+          <Field label="Modelo"><input value={model} onChange={e=>setModel(e.target.value)} placeholder="Corolla" style={IS()} /></Field>
+          <Field label="Año"><input value={year} onChange={e=>setYear(e.target.value)} placeholder="2018" style={IS()} /></Field>
+          <Field label="Kilometraje"><input value={km} onChange={e=>setKm(e.target.value)} placeholder="87000" style={IS()} /></Field>
+        </div>
+        <Field label="Problema reportado por el cliente *">
+          <textarea value={problem} onChange={e=>setProblem(e.target.value)} rows={3} placeholder="Ej: El carro tiembla al frenar a alta velocidad, hace un ruido metálico al girar a la derecha y la luz de ABS está encendida…" style={{...IS(),resize:"vertical"}} />
+        </Field>
+        <div style={{ marginTop:12 }}>
+          <Field label="Códigos OBD (opcional)">
+            <input value={codes} onChange={e=>setCodes(e.target.value)} placeholder="P0300, P0420…" style={IS()} />
+          </Field>
+        </div>
+        <button onClick={run} disabled={loading||!problem.trim()} style={{ marginTop:16, padding:"12px 28px", borderRadius:10, border:"none", background: loading||!problem.trim()?C.border:C.blue, color:"#fff", fontWeight:700, fontSize:15, cursor:loading||!problem.trim()?"default":"pointer", display:"flex", alignItems:"center", gap:10 }}>
+          {loading ? <><Spinner />Analizando…</> : "🤖 Analizar con IA"}
+        </button>
+      </div>
+
+      {result && <AIResultBox title="Diagnóstico IA" content={result} color={C.purple} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   AI QUOTE PAGE
+═══════════════════════════════════════════════════ */
+function AIQuotePage({ data }) {
+  const [clientId,    setClientId]    = useState("");
+  const [vehicleId,   setVehicleId]   = useState("");
+  const [services,    setServices]    = useState([]);
+  const [extraNotes,  setExtraNotes]  = useState("");
+  const [result,      setResult]      = useState(null);
+  const [loading,     setLoading]     = useState(false);
+
+  const client  = data.clients.find(c=>c.id===clientId);
+  const vehicle = data.vehicles.find(v=>v.id===vehicleId);
+  const clientVehicles = data.vehicles.filter(v=>v.clientId===clientId);
+
+  const toggleSvc = (id) => setServices(p=>p.includes(id)?p.filter(s=>s!==id):[...p,id]);
+
+  const total = services.reduce((s,id)=>s+((data.services||SERVICES_CAT).find(x=>x.id===id)?.price||0),0);
+
+  const run = async () => {
+    if (!services.length) return;
+    setLoading(true); setResult(null);
+    const svcList = services.map(id=>{ const s=(data.services||SERVICES_CAT).find(x=>x.id===id); return `- ${s.name}: ${fmtCRC(s.price)}`; }).join("\n");
+    const sys = `Eres un asistente de taller automotriz profesional. Redactas presupuestos claros, amables y profesionales en español para clientes costarricenses. El taller se llama Tecno AutoAsisten CR. Usa un tono cordial pero profesional.`;
+    const msg = `Redacta un presupuesto profesional para:\n\nCliente: ${client?.name||"Cliente"}\nVehículo: ${vehicle?`${vehicle.year} ${vehicle.brand} ${vehicle.model} placa ${vehicle.plate}`:"No especificado"}\n\nServicios cotizados:\n${svcList}\n\nTotal: ${fmtCRC(total)}\n\nNotas adicionales: ${extraNotes||"Ninguna"}\n\nIncluye: saludo, descripción de servicios, precio, tiempo estimado, garantía estándar del taller y cierre cordial.`;
+    try {
+      const r = await callClaude(sys, msg);
+      setResult(r);
+    } catch { setResult("Error al generar el presupuesto. Intenta nuevamente."); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ maxWidth:800, margin:"0 auto" }}>
+      <AIPageHeader icon="💬" title="Generador de Presupuesto IA" desc="Selecciona cliente, vehículo y servicios. La IA redacta un presupuesto profesional listo para enviar." />
+
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px", marginBottom:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+          <Field label="Cliente">
+            <select value={clientId} onChange={e=>{ setClientId(e.target.value); setVehicleId(""); }} style={IS()}>
+              <option value="">— Seleccionar cliente —</option>
+              {data.clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Vehículo">
+            <select value={vehicleId} onChange={e=>setVehicleId(e.target.value)} style={IS()} disabled={!clientId}>
+              <option value="">— Seleccionar vehículo —</option>
+              {clientVehicles.map(v=><option key={v.id} value={v.id}>{v.plate} · {v.brand} {v.model}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Servicios a cotizar *">
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
+            {(data.services||SERVICES_CAT).map(s=>{
+              const sel=services.includes(s.id);
+              return <button key={s.id} onClick={()=>toggleSvc(s.id)} style={{ padding:"7px 13px", borderRadius:8, border:`1px solid ${sel?C.green:C.border}`, background:sel?`${C.green}18`:"transparent", color:sel?C.green:C.textMd, cursor:"pointer", fontSize:12, fontWeight:sel?700:400 }}>{s.name} · {fmtCRC(s.price)}</button>;
+            })}
+          </div>
+        </Field>
+
+        {services.length>0 && (
+          <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginTop:14, display:"flex", justifyContent:"space-between" }}>
+            <span style={{ color:C.textMd, fontSize:14 }}>Total cotizado ({services.length} servicios)</span>
+            <span style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(total)}</span>
+          </div>
+        )}
+
+        <div style={{ marginTop:14 }}>
+          <Field label="Notas adicionales para el presupuesto">
+            <textarea value={extraNotes} onChange={e=>setExtraNotes(e.target.value)} rows={2} placeholder="Tiempo estimado, condiciones especiales, descuentos…" style={{...IS(),resize:"vertical"}} />
+          </Field>
+        </div>
+
+        <button onClick={run} disabled={loading||services.length===0} style={{ marginTop:16, padding:"12px 28px", borderRadius:10, border:"none", background:loading||!services.length?C.border:C.green, color:"#fff", fontWeight:700, fontSize:15, cursor:loading||!services.length?"default":"pointer", display:"flex", alignItems:"center", gap:10 }}>
+          {loading ? <><Spinner />Generando…</> : "💬 Generar presupuesto con IA"}
+        </button>
+      </div>
+
+      {result && <AIResultBox title="Presupuesto generado" content={result} color={C.green} copyable />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   AI MANUAL PAGE
+═══════════════════════════════════════════════════ */
+function AIManualPage({ data }) {
+  const [bookId,   setBookId]   = useState("");
+  const [question, setQuestion] = useState("");
+  const [history,  setHistory]  = useState([]);
+  const [loading,  setLoading]  = useState(false);
+  const endRef = useRef(null);
+
+  const lib = data.library || [];
+  const book = lib.find(b=>b.id===bookId);
+
+  const send = async () => {
+    if (!question.trim()) return;
+    const q = question.trim();
+    setQuestion("");
+    setHistory(h=>[...h,{ role:"user", content:q }]);
+    setLoading(true);
+
+    const context = book
+      ? `El usuario está consultando sobre el vehículo: ${book.brand} ${book.model} ${book.year}. Documento de referencia: "${book.title}" (${book.category}).`
+      : "El usuario hace una consulta técnica general de mecánica automotriz.";
+
+    const sys = `Eres un experto en mecánica automotriz con acceso a manuales técnicos. ${context} Respondes en español claro y técnico. Citas procedimientos específicos, torques, especificaciones y pasos cuando los conoces. Si no tienes información exacta del manual, lo indicas y das orientación general basada en tu conocimiento.`;
+
+    const msgs = [...history, { role:"user", content:q }].map(m=>({ role:m.role, content:m.content }));
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, system:sys, messages:msgs })
+      });
+      const d = await res.json();
+      const answer = d.content?.map(b=>b.text||"").join("") || "Sin respuesta";
+      setHistory(h=>[...h,{ role:"assistant", content:answer }]);
+    } catch {
+      setHistory(h=>[...h,{ role:"assistant", content:"Error al conectar. Intenta nuevamente." }]);
+    }
+    setLoading(false);
+    setTimeout(()=>endRef.current?.scrollIntoView({ behavior:"smooth" }),100);
+  };
+
+  const quickQ = (q) => { setQuestion(q); };
+
+  return (
+    <div style={{ maxWidth:800, margin:"0 auto", display:"flex", flexDirection:"column", height:"calc(100vh - 160px)" }}>
+      <AIPageHeader icon="📖" title="Consulta de Manuales con IA" desc="Selecciona un manual de tu biblioteca y hazle preguntas técnicas. La IA responde como si leyera el documento." />
+
+      <Field label="Manual de referencia (opcional)">
+        <select value={bookId} onChange={e=>{ setBookId(e.target.value); setHistory([]); }} style={{...IS(), marginBottom:16, maxWidth:400}}>
+          <option value="">— Consulta general sin manual —</option>
+          {lib.map(b=><option key={b.id} value={b.id}>{b.title}</option>)}
+        </select>
+      </Field>
+
+      {lib.length===0 && (
+        <div style={{ background:`${C.amber}11`, border:`1px solid ${C.amber}44`, borderRadius:10, padding:"12px 16px", marginBottom:16, fontSize:13, color:C.amber }}>
+          💡 No tienes manuales en la biblioteca aún. Puedes usarla como asistente técnico general igualmente.
+        </div>
+      )}
+
+      {/* Quick questions */}
+      {history.length===0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, color:C.textSm, marginBottom:8 }}>Preguntas frecuentes:</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {["¿Cuál es el torque de apriete de las ruedas?","¿Qué aceite recomienda para este motor?","¿Cómo resetear la luz de servicio?","¿Cuál es el intervalo de cambio de banda de tiempo?","Procedimiento para sangrado de frenos"].map(q=>(
+              <button key={q} onClick={()=>quickQ(q)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, cursor:"pointer", fontSize:12 }}>{q}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Chat history */}
+      <div style={{ flex:1, overflowY:"auto", border:`1px solid ${C.border}`, borderRadius:12, padding:"16px", marginBottom:14, background:C.card, display:"flex", flexDirection:"column", gap:14 }}>
+        {history.length===0 && <div style={{ color:C.textSm, fontSize:13, textAlign:"center", marginTop:20 }}>Haz tu primera pregunta técnica 👆</div>}
+        {history.map((m,i)=>(
+          <div key={i} style={{ display:"flex", gap:10, justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
+            {m.role==="assistant" && <div style={{ width:28, height:28, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🤖</div>}
+            <div style={{ maxWidth:"78%", background: m.role==="user"?`${C.blue}22`:C.bg, border:`1px solid ${m.role==="user"?C.blue:C.border}`, borderRadius:12, padding:"10px 14px", fontSize:13, lineHeight:1.6, whiteSpace:"pre-wrap" }}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ width:28, height:28, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🤖</div>
+            <div style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 16px", display:"flex", alignItems:"center", gap:8, color:C.textMd, fontSize:13 }}><Spinner />Buscando en el manual…</div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ display:"flex", gap:10 }}>
+        <input
+          value={question}
+          onChange={e=>setQuestion(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey&&!loading) { e.preventDefault(); send(); } }}
+          placeholder="Escribe tu pregunta técnica… (Enter para enviar)"
+          style={{...IS(), flex:1, padding:"12px 16px"}}
+        />
+        <button onClick={send} disabled={loading||!question.trim()} style={{ padding:"12px 20px", borderRadius:10, border:"none", background:loading||!question.trim()?C.border:C.purple, color:"#fff", fontWeight:700, cursor:loading||!question.trim()?"default":"pointer", fontSize:15 }}>→</button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   AI SHARED COMPONENTS
+═══════════════════════════════════════════════════ */
+function AIPageHeader({ icon, title, desc }) {
+  return (
+    <div style={{ marginBottom:24 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+        <div style={{ width:40, height:40, borderRadius:10, background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
+        <div>
+          <div style={{ fontWeight:800, fontSize:20 }}>{title}</div>
+          <div style={{ fontSize:13, color:C.textMd }}>{desc}</div>
+        </div>
+      </div>
+      <div style={{ background:`${C.purple}11`, border:`1px solid ${C.purple}33`, borderRadius:8, padding:"8px 14px", fontSize:12, color:C.purple }}>
+        ✨ Potenciado por Claude AI · Las sugerencias son orientativas. Valida siempre con criterio técnico profesional.
+      </div>
+    </div>
+  );
+}
+
+function AIResultBox({ title, content, color, copyable }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(content).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); }); };
+  return (
+    <div style={{ background:C.card, border:`1px solid ${color}44`, borderRadius:14, padding:"22px 24px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div style={{ fontWeight:700, fontSize:15, color }}>{title}</div>
+        {copyable && <button onClick={copy} style={{ padding:"6px 14px", borderRadius:8, border:`1px solid ${color}44`, background:`${color}11`, color, cursor:"pointer", fontSize:12, fontWeight:600 }}>{copied?"✓ Copiado":"📋 Copiar"}</button>}
+      </div>
+      <div style={{ fontSize:13, lineHeight:1.8, whiteSpace:"pre-wrap", color:C.text }}>{content}</div>
+    </div>
+  );
 }
 
 function Spinner() {
@@ -2574,79 +2752,6 @@ function AuthPage({ onLogin }) {
   const [error,    setError]    = useState("");
   const [pending,  setPending]  = useState(false);
   const [resetSent,setResetSent]= useState(false);
-  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem("tac_remember_email"));
-  const [biometricAvail, setBiometricAvail] = useState(false);
-
-  useEffect(()=>{
-    // Pre-fill remembered email
-    const saved = localStorage.getItem("tac_remember_email");
-    if (saved) setEmail(saved);
-    // Check if biometric auth is available
-    if (window.PublicKeyCredential) {
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then(avail => setBiometricAvail(avail))
-        .catch(()=>{});
-    }
-  },[]);
-
-  const handleBiometric = async () => {
-    setError("");
-    const savedEmail = localStorage.getItem("tac_remember_email");
-    const savedPw    = localStorage.getItem("tac_pw_enc");
-
-    if (!savedEmail || !savedPw) {
-      setError("Iniciá sesión con tu correo y contraseña una primera vez y activá 'Recordar mi correo'. Luego podrás usar Face ID.");
-      return;
-    }
-
-    try {
-      // Check if we have a registered credential
-      const credId = localStorage.getItem("tac_cred_id");
-
-      if (!credId) {
-        // REGISTER: create a new credential tied to this device
-        const challenge = new Uint8Array(32);
-        window.crypto.getRandomValues(challenge);
-        const userId = new Uint8Array(16);
-        window.crypto.getRandomValues(userId);
-
-        const cred = await navigator.credentials.create({
-          publicKey: {
-            challenge,
-            rp:   { name:"Tecno AutoAsisten CR", id: window.location.hostname },
-            user: { id: userId, name: savedEmail, displayName: savedEmail },
-            pubKeyCredParams: [{ type:"public-key", alg:-7 }, { type:"public-key", alg:-257 }],
-            authenticatorSelection: { userVerification:"required", authenticatorAttachment:"platform" },
-            timeout: 60000,
-          }
-        });
-        localStorage.setItem("tac_cred_id", btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
-        // Now log in with stored credentials
-        await loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin);
-        return;
-      }
-
-      // AUTHENTICATE: verify with existing credential
-      const challenge2 = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge2);
-      const rawId = Uint8Array.from(atob(credId), c=>c.charCodeAt(0));
-      await navigator.credentials.get({
-        publicKey: {
-          challenge: challenge2,
-          allowCredentials: [{ type:"public-key", id: rawId }],
-          userVerification: "required",
-          timeout: 60000,
-        }
-      });
-      // Biometric passed — log in with stored credentials
-      await loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin);
-
-    } catch(e) {
-      if (e.name === "NotAllowedError") setError("Face ID cancelado.");
-      else if (e.name === "InvalidStateError") setError("Ya hay una credencial registrada. Intentá de nuevo.");
-      else setError("Face ID no disponible en este dispositivo.");
-    }
-  };
 
   const handleForgotPassword = async () => {
     setError("");
@@ -2730,18 +2835,8 @@ function AuthPage({ onLogin }) {
         const userRow  = userRows?.[0];
 
         if (!userRow) {
-          if (rememberMe) {
-            localStorage.setItem("tac_remember_email", email.trim());
-            const enc = btoa(password.split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join(""));
-            localStorage.setItem("tac_pw_enc", enc);
-          } else { localStorage.removeItem("tac_remember_email"); localStorage.removeItem("tac_pw_enc"); }
           onLogin(res.access_token, res.user?.email || email.trim(), "admin");
         } else if (userRow.status === "approved") {
-          if (rememberMe) {
-            localStorage.setItem("tac_remember_email", email.trim());
-            const enc = btoa(password.split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join(""));
-            localStorage.setItem("tac_pw_enc", enc);
-          } else { localStorage.removeItem("tac_remember_email"); localStorage.removeItem("tac_pw_enc"); }
           onLogin(res.access_token, userRow.name || res.user?.email, userRow.role || "client");
         } else if (userRow.status === "pending") {
           setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
@@ -2859,13 +2954,6 @@ function AuthPage({ onLogin }) {
             )}
           </div>
 
-          {mode==="login" && (
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:4 }}>
-              <input type="checkbox" id="remember" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)} style={{ width:16, height:16, cursor:"pointer", accentColor:C.blueHi }} />
-              <label htmlFor="remember" style={{ fontSize:13, color:C.textMd, cursor:"pointer" }}>Recordar mi correo</label>
-            </div>
-          )}
-
           {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
 
           {mode==="register" && (
@@ -2874,18 +2962,12 @@ function AuthPage({ onLogin }) {
             </div>
           )}
 
-          <button onClick={handleSubmit} disabled={loading} style={{ marginTop:16, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+          <button onClick={handleSubmit} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
             {loading ? <><Spinner />{mode==="login"?"Entrando…":"Enviando solicitud…"}</> : mode==="login" ? "Entrar al sistema →" : "Enviar solicitud →"}
           </button>
 
-          {mode==="login" && biometricAvail && (
-            <button onClick={handleBiometric} style={{ marginTop:10, width:"100%", padding:"11px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-              🔐 {localStorage.getItem("tac_cred_id") ? "Entrar con Face ID / Huella" : "Activar Face ID / Huella"}
-            </button>
-          )}
-
           {mode==="login" && (
-            <button onClick={()=>{ setMode("forgot"); setError(""); }} style={{ marginTop:10, width:"100%", padding:"6px", background:"none", border:"none", color:C.blueHi, fontSize:13, cursor:"pointer", textAlign:"center" }}>
+            <button onClick={()=>{ setMode("forgot"); setError(""); }} style={{ marginTop:14, width:"100%", padding:"6px", background:"none", border:"none", color:C.blueHi, fontSize:13, cursor:"pointer", textAlign:"center" }}>
               ¿Olvidaste tu contraseña?
             </button>
           )}
@@ -3048,631 +3130,757 @@ function UsersPage({ session }) {
    CLIENT PORTAL — Vista para clientes
 ═══════════════════════════════════════════════════ */
 function ClientPortal({ session, onLogout }) {
-  const CP = {
-    bg:      "#F0F4FF",
-    card:    "#FFFFFF",
-    border:  "#E2E8F0",
-    text:    "#1E293B",
-    textMd:  "#475569",
-    textSm:  "#94A3B8",
-    blue:    "#2563EB",
-    blueHi:  "#3B82F6",
-    cyan:    "#0EA5E9",
-    green:   "#10B981",
-    amber:   "#F59E0B",
-    red:     "#EF4444",
-    purple:  "#8B5CF6",
-    navBg:   "#1E293B",
-  };
-
-  const [tab, setTab] = useState("home");
-  const [loading, setLoading] = useState(true);
-
-  // Data
-  const [myClient, setMyClient] = useState(null);
-  const [vehicles, setVehicles] = useState([]);
-  const [appts,    setAppts]    = useState([]);
-  const [orders,   setOrders]   = useState([]);
-  const [myQuotes, setMyQuotes] = useState([]);
-  const [myReports,setMyReports]= useState([]);
-  const [myInvoices,setMyInvoices]=useState([]);
-  const [workers,  setWorkers]  = useState([]);
-  const [services, setServices] = useState(SERVICES_CAT);
-
-  // Registration
-  const [regStep,    setRegStep]    = useState("client");
+  const [tab,        setTab]        = useState("appointments");
+  const [clients,    setClients]    = useState([]);
+  const [vehicles,   setVehicles]   = useState([]);
+  const [orders,     setOrders]     = useState([]);
+  const [appts,      setAppts]      = useState([]);
+  const [myClient,   setMyClient]   = useState(null);
   const [regForm,    setRegForm]    = useState({ name:"", phone:"", idNum:"", plate:"", brand:"", model:"", year:new Date().getFullYear(), color:"", fuel:"Gasolina", km:0 });
+  const [regStep,    setRegStep]    = useState("client"); // "client" | "vehicle" | "done"
   const [regLoading, setRegLoading] = useState(false);
   const [regError,   setRegError]   = useState("");
+  const [loading,    setLoading]    = useState(true);
 
-  // Book appt
-  const [apptForm,    setApptForm]    = useState({ vehicleId:"", serviceId:"diag", customService:"", date:today(), hour:getHoursForDate(today())[0]||"", notes:"" });
-  const [apptDone,    setApptDone]    = useState(false);
-  const [apptLoading, setApptLoading] = useState(false);
+  // New appointment form
+  const [apptForm,   setApptForm]   = useState({ vehicleId:"", serviceId:"diag", date:today(), hour:getHoursForDate(today())[0]||"", notes:"" });
+  const [apptDone,   setApptDone]   = useState(false);
+  const [apptLoading,setApptLoading]= useState(false);
+  const [workers,    setWorkers]    = useState([]);
+  const [services,   setServices]   = useState(SERVICES_CAT);
+  const [myQuotes,   setMyQuotes]   = useState([]);
 
-  // Quote
-  const [quoteType,    setQuoteType]    = useState("");
-  const [quoteFailure, setQuoteFailure] = useState("");
+  // Quote request form (estructurado)
+  const [quoteType,        setQuoteType]        = useState("");      // "preventive" | "corrective"
+  const [quoteFailure,     setQuoteFailure]      = useState("");
+  const [quoteRepair,      setQuoteRepair]       = useState("");
+  const [quoteDesc,    setQuoteDesc]    = useState("");
   const [quoteVehicle, setQuoteVehicle] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteDone,    setQuoteDone]    = useState(false);
 
-  // Selected vehicle for home view
-  const [selectedVeh, setSelectedVeh] = useState(0);
-
   useEffect(() => {
     (async () => {
       setLoading(true);
-      try {
-        const [cls,vhs,ords,apts,wks,svcs,qts,rpts,invs] = await Promise.all([
-          sb.get("clients"),sb.get("vehicles"),sb.get("orders"),sb.get("appointments"),
-          sb.get("workers"),sb.get("services"),sb.get("quotes"),sb.get("service_reports"),sb.get("invoices")
-        ]);
-        const allClients  = (cls||[]).map(TABLE.clients.fromDb);
-        const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
-        const allOrders   = (ords||[]).map(TABLE.orders.fromDb);
-        const allAppts    = (apts||[]).map(TABLE.appointments.fromDb);
-        const allWorkers  = (wks||[]).map(TABLE.workers.fromDb);
-        const allSvcs     = (svcs||[]).map(TABLE.services.fromDb);
-        const allQuotes   = (qts||[]).map(TABLE.quotes.fromDb);
-        const allReports  = (rpts||[]).map(TABLE.service_reports.fromDb);
-        const allInvs     = (invs||[]).map(TABLE.invoices.fromDb);
-        if (allSvcs.length) setServices(allSvcs);
-        const me = allClients.find(c=>c.email?.toLowerCase()===session.email?.toLowerCase()||c.name?.toLowerCase()===session.email?.toLowerCase());
-        setMyClient(me||null);
-        const myVehs = me ? allVehicles.filter(v=>v.clientId===me.id) : [];
-        setVehicles(myVehs);
-        setOrders(me ? allOrders.filter(o=>o.clientId===me.id) : []);
-        setAppts(me  ? allAppts.filter(a=>a.clientId===me.id)  : []);
-        setMyQuotes(me ? allQuotes.filter(q=>q.clientId===me.id) : []);
-        setMyReports(me ? allReports.filter(r=>r.clientId===me.id) : []);
-        setMyInvoices(me ? allInvs.filter(i=>i.clientId===me.id) : []);
-        setWorkers(allWorkers.filter(w=>w.status==="active"));
-        if (myVehs.length) {
-          setApptForm(f=>({...f, vehicleId:myVehs[0].id}));
-          setQuoteVehicle(myVehs[0].id);
-        }
-      } catch(e) { console.error(e); }
+      const [cls, vhs, ords, apts, wks, svcs, qts] = await Promise.all([
+        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers"), sb.get("services"), sb.get("quotes")
+      ]);
+      const allClients  = (cls||[]).map(TABLE.clients.fromDb);
+      const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
+      const allOrders   = (ords||[]).map(TABLE.orders.fromDb);
+      const allAppts    = (apts||[]).map(TABLE.appointments.fromDb);
+      const allWorkers  = (wks||[]).map(TABLE.workers.fromDb);
+      const allServices = (svcs||[]).map(TABLE.services.fromDb);
+      const allQuotes   = (qts||[]).map(TABLE.quotes.fromDb);
+      if (allServices.length) setServices(allServices);
+
+      // Match client by email or name
+      const me = allClients.find(c =>
+        c.email?.toLowerCase() === session.email?.toLowerCase() ||
+        c.name?.toLowerCase()  === session.email?.toLowerCase()
+      );
+
+      setMyClient(me || null);
+      setClients(allClients);
+      setVehicles(me ? allVehicles.filter(v=>v.clientId===me.id) : []);
+      setOrders(me   ? allOrders.filter(o=>o.clientId===me.id)   : []);
+      setAppts(me    ? allAppts.filter(a=>a.clientId===me.id)     : []);
+      setMyQuotes(me ? allQuotes.filter(q=>q.clientId===me.id)    : []);
+      setWorkers(allWorkers.filter(w=>w.status==="active"));
+      if (me && allVehicles.filter(v=>v.clientId===me.id).length > 0) {
+        const firstVeh = allVehicles.filter(v=>v.clientId===me.id)[0].id;
+        setApptForm(f=>({...f, vehicleId: firstVeh }));
+        setQuoteVehicle(firstVeh);
+      }
       setLoading(false);
     })();
   }, []);
 
+  const submitQuote = async () => {
+    if (!myClient || !quoteType || !quoteFailure.trim()) return;
+    setQuoteLoading(true);
+    const newQuote = {
+      id: uid(), clientId: myClient.id, vehicleId: quoteVehicle || null,
+      quoteType, possibleFailure: quoteFailure.trim(), possibleRepair: quoteRepair.trim(),
+      description: quoteDesc.trim(), status: "pending", services: [], total: 0,
+      notes: "", createdAt: new Date().toISOString()
+    };
+    await sb.upsert("quotes", TABLE.quotes.toDb(newQuote));
+    setMyQuotes(prev => [...prev, newQuote]);
+    setQuoteType(""); setQuoteFailure(""); setQuoteRepair(""); setQuoteDesc("");
+    setQuoteDone(true);
+    setQuoteLoading(false);
+    setTimeout(()=>setQuoteDone(false), 4000);
+  };
+
   const submitRegistration = async () => {
     setRegError(""); setRegLoading(true);
     try {
-      if (regStep==="client") {
-        if (!regForm.name.trim()||!regForm.phone.trim()) { setRegError("Nombre y teléfono son obligatorios."); setRegLoading(false); return; }
-        const nc = { id:uid(), name:regForm.name.trim(), phone:regForm.phone.trim(), email:session.email, idNum:regForm.idNum.trim(), notes:"" };
-        await sb.upsert("clients", TABLE.clients.toDb(nc));
-        setMyClient(nc); setRegStep("vehicle");
+      if (regStep === "client") {
+        if (!regForm.name.trim() || !regForm.phone.trim()) { setRegError("Nombre y teléfono son obligatorios."); setRegLoading(false); return; }
+        const newClient = { id: uid(), name: regForm.name.trim(), phone: regForm.phone.trim(), email: session.email, idNum: regForm.idNum.trim(), notes: "" };
+        await sb.upsert("clients", TABLE.clients.toDb(newClient));
+        setMyClient(newClient);
+        setRegStep("vehicle");
       } else {
-        if (!regForm.plate.trim()||!regForm.brand.trim()) { setRegError("Placa y marca son obligatorias."); setRegLoading(false); return; }
-        const nv = { id:uid(), clientId:myClient.id, plate:regForm.plate.trim().toUpperCase(), brand:regForm.brand.trim(), model:regForm.model.trim(), year:regForm.year, color:regForm.color.trim(), fuel:regForm.fuel, km:regForm.km, vin:"", notes:"", photoUrl:"" };
-        await sb.upsert("vehicles", TABLE.vehicles.toDb(nv));
-        setVehicles([nv]); setApptForm(f=>({...f,vehicleId:nv.id})); setQuoteVehicle(nv.id);
+        if (!regForm.plate.trim() || !regForm.brand.trim()) { setRegError("Placa y marca son obligatorias."); setRegLoading(false); return; }
+        const newVehicle = { id: uid(), clientId: myClient.id, plate: regForm.plate.trim().toUpperCase(), brand: regForm.brand.trim(), model: regForm.model.trim(), year: regForm.year, color: regForm.color.trim(), fuel: regForm.fuel, km: regForm.km, vin: "", notes: "" };
+        await sb.upsert("vehicles", TABLE.vehicles.toDb(newVehicle));
+        setVehicles([newVehicle]);
+        setApptForm(f=>({...f, vehicleId: newVehicle.id}));
+        setQuoteVehicle(newVehicle.id);
         setRegStep("done");
       }
-    } catch(e) { setRegError("Error al guardar."); }
+    } catch(e) { setRegError("Error al guardar. Intentá de nuevo."); }
     setRegLoading(false);
   };
 
+  const skipVehicle = () => setRegStep("done");
+
   const bookAppointment = async () => {
-    if (!myClient||!apptForm.vehicleId||!apptForm.date) return;
+    if (!myClient) return;
+    if (!apptForm.vehicleId || !apptForm.date) return;
     setApptLoading(true);
-    const na = { id:uid(), clientId:myClient.id, vehicleId:apptForm.vehicleId, serviceId:apptForm.serviceId, customService:apptForm.serviceId==="__custom__"?(apptForm.customService||""):"", date:apptForm.date, hour:apptForm.hour, status:"pending", notes:`[Solicitud electrónica] ${apptForm.notes||""}`.trim(), mechanic:workers[0]?.name||"" };
-    await sb.upsert("appointments", TABLE.appointments.toDb(na));
-    setAppts(prev=>[...prev,na]); setApptDone(true); setApptLoading(false);
-    setTimeout(()=>setApptDone(false),4000);
+    const newAppt = {
+      id: uid(), clientId: myClient.id, vehicleId: apptForm.vehicleId,
+      serviceId: apptForm.serviceId, date: apptForm.date, hour: apptForm.hour,
+      status: "pending", notes: apptForm.notes,
+      mechanic: workers[0]?.name || ""
+    };
+    await sb.upsert("appointments", TABLE.appointments.toDb(newAppt));
+    setAppts(prev => [...prev, newAppt]);
+    setApptDone(true);
+    setApptLoading(false);
+    setTimeout(()=>setApptDone(false), 4000);
   };
 
-  const submitQuote = async () => {
-    if (!myClient||!quoteType||!quoteFailure.trim()) return;
-    setQuoteLoading(true);
-    const nq = { id:uid(), clientId:myClient.id, vehicleId:quoteVehicle||null, quoteType, possibleFailure:quoteFailure.trim(), possibleRepair:"", description:"", status:"pending", services:[], total:0, notes:"", createdAt:new Date().toISOString() };
-    await sb.upsert("quotes", TABLE.quotes.toDb(nq));
-    setMyQuotes(prev=>[...prev,nq]); setQuoteType(""); setQuoteFailure(""); setQuoteDone(true); setQuoteLoading(false);
-    setTimeout(()=>setQuoteDone(false),4000);
-  };
-
-  if (loading) return (
-    <div style={{ minHeight:"100vh", background:CP.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif" }}>
-      <div style={{ textAlign:"center", color:CP.textMd }}>
-        <div style={{ fontSize:40, marginBottom:12 }}>🔧</div>
-        <div>Cargando tu portal…</div>
-      </div>
-    </div>
-  );
-
-  const ISC = () => ({ background:"#F8FAFC", border:`1px solid ${CP.border}`, borderRadius:10, color:CP.text, padding:"11px 14px", fontSize:14, width:"100%", outline:"none" });
-
-  const upcomingAppts = appts.filter(a=>a.date>=today()&&a.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date)||a.hour.localeCompare(b.hour));
-  const currentVehicle = vehicles[selectedVeh];
-  const vehicleReports = myReports.filter(r=>r.vehicleId===currentVehicle?.id);
-  const mechRec = vehicleReports[0]?.observations;
-
-  const STATUS_AP = { pending:{label:"Pendiente",color:CP.amber,bg:"#FEF3C7"}, confirmed:{label:"Confirmada",color:CP.green,bg:"#D1FAE5"}, cancelled:{label:"Cancelada",color:CP.red,bg:"#FEE2E2"}, done:{label:"Completada",color:CP.purple,bg:"#EDE9FE"} };
-  const STATUS_OR = { active:{label:"En proceso",color:CP.amber,bg:"#FEF3C7"}, completed:{label:"Completada",color:CP.green,bg:"#D1FAE5"}, cancelled:{label:"Cancelada",color:CP.red,bg:"#FEE2E2"} };
-  const STATUS_QU = { pending:{label:"Solicitada",color:CP.amber}, quoted:{label:"Cotizada",color:CP.blue}, sent:{label:"Enviada",color:CP.green}, closed:{label:"Cerrada",color:CP.purple} };
-
-  const navItems = [
-    { id:"home",    icon:"🏠", label:"Inicio" },
-    { id:"book",    icon:"📅", label:"Cita" },
-    { id:"quote",   icon:"💬", label:"Cotizar" },
-    { id:"orders",  icon:"📋", label:"Órdenes" },
-    { id:"history", icon:"📄", label:"Historial" },
-    { id:"invoice", icon:"🧾", label:"Factura" },
+  const TABS = [
+    { id:"appointments", icon:"📅", label:"Mis citas" },
+    { id:"book",         icon:"➕", label:"Agendar cita" },
+    { id:"quote",        icon:"💬", label:"Cotizar" },
+    { id:"orders",       icon:"📋", label:"Mis órdenes" },
+    { id:"vehicles",     icon:"🚗", label:"Mis vehículos" },
   ];
 
-  return (
-    <div style={{ minHeight:"100vh", background:CP.bg, fontFamily:"'Inter',system-ui,sans-serif", color:CP.text, paddingBottom:72 }}>
-      {/* TOP HEADER */}
-      <div style={{ background:"linear-gradient(135deg,#1E3A5F,#2563EB)", padding:"16px 20px 20px", color:"#fff" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:36, height:36, background:"rgba(255,255,255,.2)", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🔧</div>
-            <div>
-              <div style={{ fontWeight:800, fontSize:15 }}>Tecno AutoAsisten CR</div>
-              <div style={{ fontSize:11, opacity:.8 }}>Portal del Cliente</div>
-            </div>
-          </div>
-          <button onClick={onLogout} style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>Salir</button>
-        </div>
+  if (loading) return <Loader />;
 
-        {/* Greeting */}
-        <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>
-          Hola, {myClient?.name?.split(" ")[0] || session.email.split("@")[0]} 👋
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',system-ui,sans-serif" }}>
+      {/* Header */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:"0 24px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:32, height:32, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🔧</div>
+          <div>
+            <div style={{ fontWeight:700, fontSize:14 }}>Tecno AutoAsisten <span style={{ color:C.blueHi }}>CR</span></div>
+            <div style={{ fontSize:10, color:C.textSm }}>Portal de Clientes</div>
+          </div>
         </div>
-        <div style={{ fontSize:13, opacity:.8 }}>
-          {upcomingAppts.length>0 ? `Tenés ${upcomingAppts.length} cita${upcomingAppts.length>1?"s":""} próxima${upcomingAppts.length>1?"s":""}` : "Sin citas próximas"}
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:12, color:C.textSm }}>👤 {session.email}</span>
+          <button onClick={onLogout} style={{ fontSize:12, color:C.red, background:"none", border:`1px solid ${C.red}44`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontWeight:600 }}>Salir</button>
         </div>
       </div>
 
-      {/* CONTENT */}
-      <div style={{ padding:"0 16px", marginTop:-8 }}>
+      <div style={{ maxWidth:700, margin:"0 auto", padding:"28px 20px" }}>
 
-        {/* REGISTRATION — if no client profile */}
-        {!myClient && regStep!=="done" && (
-          <div style={{ background:CP.card, borderRadius:16, padding:"20px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
-            <div style={{ fontWeight:700, fontSize:17, marginBottom:4, color:CP.text }}>
-              {regStep==="client" ? "👤 Completá tu perfil" : "🚗 Agregá tu vehículo"}
+        {/* Welcome */}
+        {myClient && (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px", marginBottom:24, display:"flex", gap:14, alignItems:"center" }}>
+            <div style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:20, color:"#fff" }}>
+              {myClient.name.charAt(0)}
             </div>
-            <div style={{ fontSize:13, color:CP.textMd, marginBottom:16 }}>
-              {regStep==="client" ? "Necesitamos tus datos para agendar citas." : "Registrá tu vehículo para empezar. (Opcional)"}
+            <div>
+              <div style={{ fontWeight:700, fontSize:16 }}>Bienvenido, {myClient.name}</div>
+              <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{vehicles.length} vehículo(s) · {appts.length} cita(s) · {orders.length} orden(es)</div>
             </div>
+          </div>
+        )}
+
+        {!myClient && regStep !== "done" && (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px", marginBottom:24 }}>
+            <div style={{ fontWeight:800, fontSize:18, marginBottom:6 }}>
+              {regStep==="client" ? "👤 Completá tu perfil" : "🚗 Registrá tu vehículo"}
+            </div>
+            <div style={{ fontSize:13, color:C.textMd, marginBottom:20 }}>
+              {regStep==="client"
+                ? "Para agendar citas y cotizaciones necesitamos tus datos."
+                : "Agregá tu vehículo para poder agendar citas. Podés saltarte este paso."}
+            </div>
+
             {regStep==="client" && (
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <Field label="Nombre completo *"><input value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} placeholder="Juan Pérez" style={IS()} /></Field>
+                <Field label="Teléfono *"><input value={regForm.phone} onChange={e=>setRegForm(f=>({...f,phone:e.target.value}))} placeholder="8800-0000" style={IS()} /></Field>
                 <div style={{ gridColumn:"span 2" }}>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Nombre completo *</label>
-                  <input value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} style={ISC()} />
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Teléfono *</label>
-                  <input value={regForm.phone} onChange={e=>setRegForm(f=>({...f,phone:e.target.value}))} style={ISC()} />
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Cédula</label>
-                  <input value={regForm.idNum} onChange={e=>setRegForm(f=>({...f,idNum:e.target.value}))} style={ISC()} />
+                  <Field label="Cédula / ID (opcional)"><input value={regForm.idNum} onChange={e=>setRegForm(f=>({...f,idNum:e.target.value}))} placeholder="1-0000-0000" style={IS()} /></Field>
                 </div>
               </div>
             )}
+
             {regStep==="vehicle" && (
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Placa *</label>
-                  <input value={regForm.plate} onChange={e=>setRegForm(f=>({...f,plate:e.target.value.toUpperCase()}))} style={ISC()} placeholder="ABC-123" />
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Marca *</label>
-                  <input value={regForm.brand} onChange={e=>setRegForm(f=>({...f,brand:e.target.value}))} style={ISC()} />
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Modelo</label>
-                  <input value={regForm.model} onChange={e=>setRegForm(f=>({...f,model:e.target.value}))} style={ISC()} />
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Año</label>
-                  <input type="number" value={regForm.year} onChange={e=>setRegForm(f=>({...f,year:+e.target.value}))} style={ISC()} />
-                </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <Field label="Placa *"><input value={regForm.plate} onChange={e=>setRegForm(f=>({...f,plate:e.target.value.toUpperCase()}))} placeholder="ABC-123" style={IS()} /></Field>
+                <Field label="Marca *"><input value={regForm.brand} onChange={e=>setRegForm(f=>({...f,brand:e.target.value}))} placeholder="Toyota" style={IS()} /></Field>
+                <Field label="Modelo"><input value={regForm.model} onChange={e=>setRegForm(f=>({...f,model:e.target.value}))} placeholder="Corolla" style={IS()} /></Field>
+                <Field label="Año"><input type="number" value={regForm.year} onChange={e=>setRegForm(f=>({...f,year:+e.target.value}))} style={IS()} /></Field>
+                <Field label="Color"><input value={regForm.color} onChange={e=>setRegForm(f=>({...f,color:e.target.value}))} placeholder="Blanco" style={IS()} /></Field>
+                <Field label="Combustible">
+                  <select value={regForm.fuel} onChange={e=>setRegForm(f=>({...f,fuel:e.target.value}))} style={IS()}>
+                    {["Gasolina","Diésel","Híbrido","Eléctrico"].map(fu=><option key={fu}>{fu}</option>)}
+                  </select>
+                </Field>
+                <Field label="Kilometraje"><input type="number" value={regForm.km} onChange={e=>setRegForm(f=>({...f,km:+e.target.value}))} style={IS()} /></Field>
               </div>
             )}
-            {regError && <div style={{ color:CP.red, fontSize:13, marginTop:10 }}>❌ {regError}</div>}
-            <div style={{ display:"flex", gap:10, marginTop:16 }}>
-              <button onClick={submitRegistration} disabled={regLoading} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
-                {regLoading?"Guardando…":regStep==="client"?"Continuar →":"Guardar vehículo →"}
+
+            {regError && <div style={{ marginTop:12, color:C.red, fontSize:13 }}>❌ {regError}</div>}
+
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={submitRegistration} disabled={regLoading} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:regLoading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:regLoading?"default":"pointer" }}>
+                {regLoading ? "Guardando…" : regStep==="client" ? "Continuar →" : "Guardar vehículo →"}
               </button>
-              {regStep==="vehicle" && <button onClick={()=>setRegStep("done")} style={{ padding:"12px 16px", borderRadius:10, border:`1px solid ${CP.border}`, background:"transparent", color:CP.textMd, fontSize:14, cursor:"pointer" }}>Omitir</button>}
+              {regStep==="vehicle" && <button onClick={skipVehicle} style={{ padding:"12px 20px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontSize:14, cursor:"pointer" }}>Omitir</button>}
             </div>
           </div>
         )}
 
-        {/* HOME TAB */}
-        {tab==="home" && (
+        {!myClient && regStep === "done" && (
+          <div style={{ background:`${C.green}11`, border:`1px solid ${C.green}44`, borderRadius:12, padding:"16px 20px", marginBottom:24, fontSize:14, color:C.green }}>
+            ✅ ¡Perfil creado! Ya podés agendar citas y solicitar cotizaciones.
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display:"flex", gap:6, marginBottom:24, background:C.card, borderRadius:12, padding:6 }}>
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 6px", borderRadius:8, border:"none", cursor:"pointer", background:tab===t.id?C.blue:"transparent", color:tab===t.id?"#fff":C.textMd, fontWeight:tab===t.id?700:400, fontSize:12, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+              <span style={{ fontSize:16 }}>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* MIS CITAS */}
+        {tab==="appointments" && (
           <div>
-            {/* Vehicle card */}
-            {vehicles.length>0 && (
-              <div style={{ background:CP.card, borderRadius:16, overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16 }}>
-                {/* Vehicle selector if multiple */}
-                {vehicles.length>1 && (
-                  <div style={{ display:"flex", gap:8, padding:"12px 16px 0", overflowX:"auto" }}>
-                    {vehicles.map((v,i)=>(
-                      <button key={v.id} onClick={()=>setSelectedVeh(i)} style={{ padding:"6px 14px", borderRadius:20, border:`1px solid ${selectedVeh===i?CP.blue:CP.border}`, background:selectedVeh===i?`${CP.blue}11`:"transparent", color:selectedVeh===i?CP.blue:CP.textMd, cursor:"pointer", fontSize:12, fontWeight:selectedVeh===i?700:400, whiteSpace:"nowrap" }}>
-                        {v.plate}
-                      </button>
-                    ))}
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis citas</div>
+            {appts.length===0 && <Empty msg="No tenés citas registradas" />}
+            {[...appts].sort((a,b)=>b.date.localeCompare(a.date)).map(a=>{
+              const svc = services.find(s=>s.id===a.serviceId);
+              const sc  = STATUS_COLORS[a.status] || STATUS_COLORS.pending;
+              return (
+                <div key={a.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10, display:"flex", gap:14, alignItems:"center" }}>
+                  <div style={{ background:C.bg, borderRadius:8, padding:"8px 12px", textAlign:"center", minWidth:58, flexShrink:0 }}>
+                    <div style={{ fontSize:10, color:C.textSm }}>{fmtDate(a.date)}</div>
+                    <div style={{ fontWeight:700, color:C.blueHi, fontSize:14 }}>{a.hour}</div>
                   </div>
-                )}
-                {/* Vehicle photo */}
-                {currentVehicle?.photoUrl ? (
-                  <div style={{ height:180, overflow:"hidden", position:"relative" }}>
-                    <img src={currentVehicle.photoUrl} alt={currentVehicle.plate} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                    <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(0,0,0,.7))", padding:"20px 16px 12px" }}>
-                      <div style={{ fontWeight:800, fontSize:18, color:"#fff" }}>{currentVehicle.year} {currentVehicle.brand} {currentVehicle.model}</div>
-                      <div style={{ fontSize:13, color:"rgba(255,255,255,.8)" }}>{currentVehicle.plate} · {currentVehicle.color} · {currentVehicle.fuel}</div>
-                    </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:600, fontSize:14 }}>{svc?.name || a.serviceId}</div>
+                    <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{a.mechanic && `Mecánico: ${a.mechanic}`}</div>
+                    {a.notes && <div style={{ fontSize:11, color:C.textSm }}>💬 {a.notes}</div>}
                   </div>
-                ) : (
-                  <div style={{ background:`linear-gradient(135deg,#1E3A5F,#2563EB)`, padding:"20px 16px", display:"flex", alignItems:"center", gap:14 }}>
-                    <div style={{ width:56, height:56, background:"rgba(255,255,255,.15)", borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🚗</div>
-                    <div>
-                      <div style={{ fontWeight:800, fontSize:18, color:"#fff" }}>{currentVehicle?.year} {currentVehicle?.brand} {currentVehicle?.model}</div>
-                      <div style={{ fontSize:13, color:"rgba(255,255,255,.8)" }}>{currentVehicle?.plate} · {currentVehicle?.color} · {currentVehicle?.fuel}</div>
-                    </div>
-                  </div>
-                )}
-                {/* Vehicle stats */}
-                <div style={{ padding:"14px 16px" }}>
-                  <div style={{ display:"flex", gap:16, marginBottom:currentVehicle?.km?12:0 }}>
-                    {currentVehicle?.km>0 && <div><div style={{ fontSize:10, color:CP.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Kilometraje</div><div style={{ fontWeight:700, fontSize:15, color:CP.text }}>{Number(currentVehicle.km).toLocaleString()} km</div></div>}
-                    <div><div style={{ fontSize:10, color:CP.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Órdenes</div><div style={{ fontWeight:700, fontSize:15, color:CP.text }}>{orders.filter(o=>o.vehicleId===currentVehicle?.id).length}</div></div>
-                    <div><div style={{ fontSize:10, color:CP.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Informes</div><div style={{ fontWeight:700, fontSize:15, color:CP.text }}>{vehicleReports.length}</div></div>
-                  </div>
-                  {/* Mechanic recommendation */}
-                  {mechRec && (
-                    <div style={{ background:"#FFF7ED", border:`1px solid ${CP.amber}44`, borderRadius:10, padding:"10px 12px", marginTop:4 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:CP.amber, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>💡 Recomendación del mecánico</div>
-                      <div style={{ fontSize:13, color:"#92400E" }}>{mechRec}</div>
-                    </div>
-                  )}
+                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
                 </div>
-              </div>
-            )}
-
-            {/* No vehicle */}
-            {vehicles.length===0 && myClient && (
-              <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16, textAlign:"center" }}>
-                <div style={{ fontSize:40, marginBottom:8 }}>🚗</div>
-                <div style={{ fontWeight:600, color:CP.text, marginBottom:4 }}>Sin vehículos registrados</div>
-                <div style={{ fontSize:13, color:CP.textMd }}>El taller registrará tu vehículo en tu próxima visita.</div>
-              </div>
-            )}
-
-            {/* Upcoming appointments */}
-            <div style={{ background:CP.card, borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                <div style={{ fontWeight:700, fontSize:16 }}>📅 Próximas citas</div>
-                <button onClick={()=>setTab("book")} style={{ fontSize:12, color:CP.blue, background:"none", border:"none", cursor:"pointer", fontWeight:600 }}>+ Agendar</button>
-              </div>
-              {upcomingAppts.length===0 ? (
-                <div style={{ textAlign:"center", padding:"16px 0", color:CP.textSm, fontSize:13 }}>
-                  Sin citas próximas ·{" "}
-                  <span onClick={()=>setTab("book")} style={{ color:CP.blue, cursor:"pointer", fontWeight:600 }}>Agendar una</span>
-                </div>
-              ) : upcomingAppts.slice(0,3).map(a=>{
-                const svc = a.serviceId==="__custom__"?(a.customService||"Servicio personalizado"):(services.find(s=>s.id===a.serviceId)?.name||a.serviceId);
-                const sc  = STATUS_AP[a.status]||STATUS_AP.pending;
-                return (
-                  <div key={a.id} style={{ display:"flex", gap:12, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${CP.border}` }}>
-                    <div style={{ background:`linear-gradient(135deg,${CP.blue},${CP.cyan})`, borderRadius:10, padding:"8px 10px", textAlign:"center", minWidth:52, flexShrink:0 }}>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,.8)" }}>{a.date.slice(5).replace("-","/")}</div>
-                      <div style={{ fontWeight:800, color:"#fff", fontSize:14 }}>{a.hour}</div>
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:600, fontSize:14 }}>{svc}</div>
-                      <div style={{ fontSize:12, color:CP.textMd }}>{a.mechanic||"Por asignar"}</div>
-                    </div>
-                    <span style={{ background:sc.bg, color:sc.color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{sc.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Active orders */}
-            {orders.filter(o=>o.status==="active").length>0 && (
-              <div style={{ background:CP.card, borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16 }}>
-                <div style={{ fontWeight:700, fontSize:16, marginBottom:14 }}>🔧 En proceso</div>
-                {orders.filter(o=>o.status==="active").map(o=>(
-                  <div key={o.id} style={{ padding:"10px 0", borderBottom:`1px solid ${CP.border}` }}>
-                    <div style={{ display:"flex", justifyContent:"space-between" }}>
-                      <div style={{ fontWeight:600, fontSize:14 }}>{o.services.map(sid=>services.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")||"Servicio"}</div>
-                      <span style={{ background:"#FEF3C7", color:CP.amber, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>En proceso</span>
-                    </div>
-                    <div style={{ fontSize:12, color:CP.textMd, marginTop:2 }}>{o.mechanic} · {fmtDate(o.date)}</div>
-                    {o.mechanicNotes && <div style={{ fontSize:12, color:CP.blue, marginTop:4, background:"#EFF6FF", borderRadius:6, padding:"6px 10px" }}>🔧 {o.mechanicNotes}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Quick actions */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-              {[
-                { icon:"📅", label:"Agendar cita", tab:"book", color:CP.blue },
-                { icon:"💬", label:"Solicitar cotización", tab:"quote", color:CP.purple },
-                { icon:"📋", label:"Mis órdenes", tab:"orders", color:CP.green },
-                { icon:"📄", label:"Historial", tab:"history", color:CP.amber },
-              ].map(a=>(
-                <button key={a.tab} onClick={()=>setTab(a.tab)} style={{ background:CP.card, border:`1px solid ${CP.border}`, borderRadius:14, padding:"16px 14px", textAlign:"left", cursor:"pointer", boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
-                  <div style={{ fontSize:24, marginBottom:6 }}>{a.icon}</div>
-                  <div style={{ fontWeight:600, fontSize:13, color:CP.text }}>{a.label}</div>
-                </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
         )}
 
-        {/* BOOK APPOINTMENT */}
+        {/* AGENDAR CITA */}
         {tab==="book" && (
-          <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
-            <div style={{ fontWeight:700, fontSize:18, marginBottom:4, color:CP.text }}>📅 Agendar cita</div>
-            <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Horario: {SCHEDULE_LABEL}</div>
-            {apptDone && <div style={{ background:"#D1FAE5", border:`1px solid ${CP.green}`, borderRadius:10, padding:"12px 16px", marginBottom:16, color:"#065F46", fontWeight:600 }}>✅ ¡Cita agendada! El taller confirmará pronto.</div>}
-            {!myClient ? <div style={{ color:CP.amber, fontSize:14 }}>⬆️ Completá tu perfil primero.</div> : vehicles.length===0 ? <div style={{ color:CP.textMd, fontSize:14 }}>El taller registrará tu vehículo en tu primera visita.</div> : (
-              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Vehículo</label>
-                  <select value={apptForm.vehicleId} onChange={e=>setApptForm(f=>({...f,vehicleId:e.target.value}))} style={ISC()}>
-                    {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Servicio</label>
-                  <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={ISC()}>
-                    {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-                    <option value="__custom__">✏️ Escribir manualmente…</option>
-                  </select>
-                </div>
-                {apptForm.serviceId==="__custom__" && (
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Describí el servicio</label>
-                    <input value={apptForm.customService||""} onChange={e=>setApptForm(f=>({...f,customService:e.target.value}))} placeholder="Ej: Cambio de correa de distribución…" style={ISC()} />
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Agendar una cita</div>
+            {!myClient && regStep!=="done" && <div style={{ color:C.amber, fontSize:14 }}>⬆️ Completá tu perfil arriba primero.</div>}
+            {myClient && vehicles.length===0 && <div style={{ color:C.amber, fontSize:14 }}>No tenés vehículos registrados. Contactá al taller.</div>}
+            {myClient && vehicles.length>0 && (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
+                {apptDone && (
+                  <div style={{ background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:10, padding:"12px 16px", marginBottom:16, color:C.green, fontWeight:600 }}>
+                    ✅ ¡Cita agendada! El taller confirmará pronto.
                   </div>
                 )}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Fecha</label>
-                    <input type="date" value={apptForm.date} min={today()} onChange={e=>{ const nd=e.target.value; const vh=getHoursForDate(nd); setApptForm(f=>({...f,date:nd,hour:vh[0]||""})); }} style={ISC()} />
-                    {apptForm.date && !isWorkingDay(apptForm.date) && <div style={{ fontSize:11, color:CP.red, marginTop:4 }}>⚠️ Cerrado los domingos.</div>}
-                  </div>
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Hora</label>
-                    <select value={apptForm.hour} onChange={e=>setApptForm(f=>({...f,hour:e.target.value}))} style={ISC()} disabled={!isWorkingDay(apptForm.date)}>
-                      {getHoursForDate(apptForm.date).length===0 ? <option>No disponible</option> : getHoursForDate(apptForm.date).map(h=><option key={h} value={h}>{h}</option>)}
+                <div style={{ background:`${C.blue}11`, border:`1px solid ${C.blue}33`, borderRadius:8, padding:"8px 14px", marginBottom:14, fontSize:12, color:C.blueHi }}>
+                  🕐 Horario de atención: {SCHEDULE_LABEL}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  <Field label="Vehículo">
+                    <select value={apptForm.vehicleId} onChange={e=>setApptForm(f=>({...f,vehicleId:e.target.value}))} style={IS()}>
+                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
                     </select>
-                  </div>
+                  </Field>
+                  <Field label="Servicio">
+                    <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={IS()}>
+                      {services.map(s=><option key={s.id} value={s.id}>{s.name} · {fmtCRC(s.price)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Fecha">
+                    <input type="date" value={apptForm.date} min={today()} onChange={e=>{
+                      const newDate = e.target.value;
+                      const validHours = getHoursForDate(newDate);
+                      setApptForm(f=>({...f, date:newDate, hour: validHours[0]||""}));
+                    }} style={IS()} />
+                    {apptForm.date && !isWorkingDay(apptForm.date) && (
+                      <div style={{ fontSize:11, color:C.red, marginTop:4 }}>⚠️ Cerrado los domingos. Elegí otro día.</div>
+                    )}
+                  </Field>
+                  <Field label="Hora">
+                    <select value={apptForm.hour} onChange={e=>setApptForm(f=>({...f,hour:e.target.value}))} style={IS()} disabled={!isWorkingDay(apptForm.date)}>
+                      {getHoursForDate(apptForm.date).length===0
+                        ? <option value="">No disponible</option>
+                        : getHoursForDate(apptForm.date).map(h=><option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </Field>
                 </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Notas (opcional)</label>
-                  <textarea value={apptForm.notes} onChange={e=>setApptForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Describí el problema o lo que necesitás revisar…" style={{...ISC(),resize:"vertical"}} />
+                <div style={{ marginTop:14 }}>
+                  <Field label="Notas / problema">
+                    <textarea value={apptForm.notes} onChange={e=>setApptForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Describí el problema o lo que necesitás revisar…" style={{...IS(),resize:"vertical"}} />
+                  </Field>
                 </div>
-                <button onClick={bookAppointment} disabled={apptLoading||!isWorkingDay(apptForm.date)||!apptForm.hour} style={{ padding:"14px", borderRadius:12, border:"none", background:(apptLoading||!isWorkingDay(apptForm.date)||!apptForm.hour)?"#CBD5E1":`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
-                  {apptLoading?"Agendando…":"📅 Confirmar cita"}
+                <button onClick={bookAppointment} disabled={apptLoading || !isWorkingDay(apptForm.date) || !apptForm.hour} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(apptLoading || !isWorkingDay(apptForm.date) || !apptForm.hour)?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:(apptLoading || !isWorkingDay(apptForm.date) || !apptForm.hour)?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                  {apptLoading ? <><Spinner />Agendando…</> : "📅 Confirmar cita"}
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* QUOTE */}
+        {/* COTIZAR */}
         {tab==="quote" && (
-          <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
-            <div style={{ fontWeight:700, fontSize:18, marginBottom:4 }}>💬 Solicitar cotización</div>
-            <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Describí lo que necesitás y te enviamos el precio por WhatsApp.</div>
-            {quoteDone ? (
-              <div style={{ background:"#D1FAE5", borderRadius:12, padding:"20px", textAlign:"center" }}>
-                <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
-                <div style={{ fontWeight:700, color:"#065F46" }}>¡Solicitud enviada! Te contactamos pronto.</div>
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Solicitar cotización</div>
+
+            {quoteDone && (
+              <div style={{ background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:10, padding:"12px 16px", marginBottom:16, color:C.green, fontWeight:600 }}>
+                ✅ ¡Solicitud enviada! El taller te enviará la cotización a la brevedad.
               </div>
-            ) : !myClient ? <div style={{ color:CP.amber, fontSize:14 }}>⬆️ Completá tu perfil primero.</div> : (
-              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            )}
+
+            {!myClient && regStep!=="done" && <div style={{ color:C.amber, fontSize:14 }}>⬆️ Completá tu perfil arriba primero.</div>}
+
+            {myClient && (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
                 {vehicles.length>0 && (
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Vehículo (opcional)</label>
-                    <select value={quoteVehicle} onChange={e=>setQuoteVehicle(e.target.value)} style={ISC()}>
+                  <Field label="Vehículo (opcional)">
+                    <select value={quoteVehicle} onChange={e=>setQuoteVehicle(e.target.value)} style={IS()}>
                       <option value="">Sin especificar</option>
                       {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
                     </select>
-                  </div>
+                  </Field>
                 )}
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:8 }}>Tipo de servicio *</label>
-                  <div style={{ display:"flex", gap:10 }}>
-                    {[["diagnosis","🔍 Diagnóstico","Identificar el problema"],["repair","🔧 Reparación","Arreglar un problema conocido"],["warranty","🛡️ Garantía","Revisión bajo garantía"]].map(([v,l,d])=>(
-                      <button key={v} onClick={()=>setQuoteType(v)} style={{ flex:1, textAlign:"left", padding:"12px 10px", borderRadius:10, border:`1px solid ${quoteType===v?CP.blue:CP.border}`, background:quoteType===v?`${CP.blue}11`:"transparent", cursor:"pointer" }}>
-                        <div style={{ fontWeight:700, fontSize:12, color:quoteType===v?CP.blue:CP.text }}>{l}</div>
-                        <div style={{ fontSize:10, color:CP.textSm, marginTop:2 }}>{d}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Describí el problema *</label>
-                  <textarea value={quoteFailure} onChange={e=>setQuoteFailure(e.target.value)} rows={4} placeholder="Ej: El carro hace un ruido al frenar, la luz de check está encendida…" style={{...ISC(),resize:"vertical"}} />
-                </div>
-                <button onClick={submitQuote} disabled={quoteLoading||!quoteType||!quoteFailure.trim()} style={{ padding:"14px", borderRadius:12, border:"none", background:(quoteLoading||!quoteType||!quoteFailure.trim())?"#CBD5E1":`linear-gradient(135deg,${CP.purple},${CP.blue})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
-                  {quoteLoading?"Enviando…":"💬 Solicitar cotización"}
-                </button>
 
-                {/* Quote history */}
-                {myQuotes.length>0 && (
-                  <div style={{ marginTop:8 }}>
-                    <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>Mis cotizaciones</div>
-                    {myQuotes.map(q=>{
-                      const sc=STATUS_QU[q.status]||STATUS_QU.pending;
-                      return (
-                        <div key={q.id} style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 14px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <div>
-                            <div style={{ fontWeight:600, fontSize:13 }}>{q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</div>
-                            <div style={{ fontSize:12, color:CP.textMd, marginTop:2 }}>{q.possibleFailure?.slice(0,50)}{q.possibleFailure?.length>50?"…":""}</div>
-                            {q.total>0 && <div style={{ fontWeight:700, color:CP.green, marginTop:4 }}>{fmtCRC(q.total)}</div>}
-                          </div>
-                          <span style={{ background:`${sc.color}22`, color:sc.color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{sc.label}</span>
+                <div style={{ marginTop:14 }}>
+                  <Field label="Tipo de servicio *">
+                    <div style={{ display:"flex", gap:8, marginTop:6, flexWrap:"wrap" }}>
+                      {[
+                        ["diagnosis","🔍 Diagnóstico","Identificar qué tiene el vehículo"],
+                        ["repair","🔧 Reparación","Arreglar un problema conocido"],
+                        ["warranty","🛡️ Garantía","Revisión bajo garantía"]
+                      ].map(([v,l,desc])=>(
+                        <button key={v} onClick={()=>setQuoteType(v)} style={{ flex:1, minWidth:120, textAlign:"left", padding:"12px 14px", borderRadius:10, border:`1px solid ${quoteType===v?C.blueHi:C.border}`, background:quoteType===v?`${C.blue}22`:"transparent", cursor:"pointer" }}>
+                          <div style={{ fontWeight:700, fontSize:13, color:quoteType===v?C.blueHi:C.text }}>{l}</div>
+                          <div style={{ fontSize:11, color:C.textSm, marginTop:3 }}>{desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                </div>
+
+                <div style={{ marginTop:14 }}>
+                  <Field label="Describí el problema *">
+                    <textarea value={quoteFailure} onChange={e=>setQuoteFailure(e.target.value)} rows={4} placeholder="Ej: El carro hace un ruido al frenar, la luz de check está encendida, el aire no enfría…" style={{...IS(),resize:"vertical"}} />
+                  </Field>
+                </div>
+
+                <button onClick={submitQuote} disabled={quoteLoading || !quoteType || !quoteFailure.trim()} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(quoteLoading||!quoteType||!quoteFailure.trim())?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:(quoteLoading||!quoteType||!quoteFailure.trim())?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                  {quoteLoading ? <><Spinner />Enviando…</> : "💬 Solicitar cotización"}
+                </button>
+              </div>
+            )}
+            )}
+
+            {/* Historial de cotizaciones */}
+            {myQuotes.length > 0 && (
+              <div style={{ marginTop:24 }}>
+                <div style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>Mis cotizaciones</div>
+                {[...myQuotes].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(q=>{
+                  const sc = QUOTE_STATUS[q.status] || QUOTE_STATUS.pending;
+                  return (
+                    <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+                        <div style={{ flex:1 }}>
+                          {q.quoteType && <div style={{ fontSize:11, fontWeight:700, color:C.blueHi, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>{q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</div>}
+                          {q.possibleFailure && <div style={{ fontSize:13, color:C.text, marginBottom:4 }}>📋 {q.possibleFailure}</div>}
+                          {q.possibleRepair  && <div style={{ fontSize:12, color:C.textSm }}>🔩 {q.possibleRepair}</div>}
+                          {q.total > 0 && <div style={{ fontWeight:800, fontSize:16, color:C.green, marginTop:8 }}>Total: {fmtCRC(q.total)}</div>}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-        {/* ORDERS */}
+        {/* MIS ÓRDENES */}
         {tab==="orders" && (
           <div>
-            <div style={{ fontWeight:700, fontSize:18, marginBottom:16 }}>📋 Mis órdenes</div>
-            {orders.length===0 && <div style={{ background:CP.card, borderRadius:16, padding:"30px", textAlign:"center", color:CP.textSm, boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>Sin órdenes registradas</div>}
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis órdenes de trabajo</div>
+            {orders.length===0 && <Empty msg="No tenés órdenes registradas" />}
             {[...orders].sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{
-              const sc=STATUS_OR[o.status]||STATUS_OR.active;
+              const sc = ORDER_STATUS[o.status] || ORDER_STATUS.active;
               return (
-                <div key={o.id} style={{ background:CP.card, borderRadius:16, padding:"16px", marginBottom:12, boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                    <div style={{ fontWeight:700, fontSize:15 }}>{fmtDate(o.date)}</div>
-                    <span style={{ background:sc.bg, color:sc.color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{sc.label}</span>
+                <div key={o.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px", marginBottom:10 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>{fmtDate(o.date)}</div>
+                      <div style={{ fontSize:12, color:C.textSm, marginTop:3 }}>
+                        {o.services.map(sid=>services.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
+                      </div>
+                      {o.mechanic && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>Mecánico: {o.mechanic}</div>}
+                      {o.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>💬 {o.notes}</div>}
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(o.total)}</div>
+                      <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                    </div>
                   </div>
-                  <div style={{ fontSize:13, color:CP.textMd }}>{o.services.map(sid=>services.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")||"Servicio"}</div>
-                  <div style={{ fontSize:12, color:CP.textSm, marginTop:2 }}>{o.mechanic}</div>
-                  {o.mechanicNotes && <div style={{ fontSize:12, color:CP.blue, marginTop:8, background:"#EFF6FF", borderRadius:8, padding:"8px 10px" }}>🔧 {o.mechanicNotes}</div>}
-                  {o.total>0 && <div style={{ fontWeight:800, fontSize:17, color:CP.green, marginTop:10 }}>{fmtCRC(o.total)}</div>}
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* HISTORY */}
-        {tab==="history" && (
+        {/* MIS VEHÍCULOS */}
+        {tab==="vehicles" && (
           <div>
-            <div style={{ fontWeight:700, fontSize:18, marginBottom:16 }}>📄 Historial de servicios</div>
-            {myReports.length===0 && <div style={{ background:CP.card, borderRadius:16, padding:"30px", textAlign:"center", color:CP.textSm, boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>Sin informes de servicio aún</div>}
-            {[...myReports].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(r=>{
-              const v=vehicles.find(x=>x.id===r.vehicleId);
-              const o=orders.find(x=>x.id===r.orderId);
-              return (
-                <div key={r.id} style={{ background:CP.card, borderRadius:16, padding:"18px", marginBottom:12, boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
-                  <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>📋 Informe de servicio</div>
-                  <div style={{ fontSize:12, color:CP.textSm, marginBottom:12 }}>{v&&`${v.plate} · ${v.brand} ${v.model}`} · {fmtDate(o?.date||r.createdAt?.slice(0,10))} · {r.mechanic}{r.kmAtService>0?` · ${Number(r.kmAtService).toLocaleString()} km`:""}</div>
-                  {o?.services?.length>0 && (
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
-                      {o.services.map(sid=>{ const s=services.find(x=>x.id===sid); return s?<span key={sid} style={{ background:"#D1FAE5", color:"#065F46", borderRadius:6, padding:"3px 10px", fontSize:12, fontWeight:600 }}>✅ {s.name}</span>:null; })}
-                    </div>
-                  )}
-                  <div style={{ fontSize:13, color:CP.text, marginBottom:r.observations?10:0, lineHeight:1.6 }}>{r.worksDone}</div>
-                  {r.observations && <div style={{ background:"#FFF7ED", border:`1px solid ${CP.amber}44`, borderRadius:10, padding:"10px 12px", fontSize:13, color:"#92400E" }}>💡 {r.observations}</div>}
-                </div>
-              );
-            })}
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>Mis vehículos</div>
+            {vehicles.length===0 && <Empty msg="No tenés vehículos registrados" />}
+            {vehicles.map(v=>(
+              <div key={v.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px", marginBottom:10 }}>
+                <div style={{ fontWeight:700, fontSize:15 }}>{v.plate} — {v.year} {v.brand} {v.model}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:4 }}>{v.color} · {v.fuel} · {Number(v.km).toLocaleString()} km</div>
+                {v.vin && <div style={{ fontSize:11, color:C.textSm, marginTop:2 }}>VIN: {v.vin}</div>}
+                {v.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:4 }}>💬 {v.notes}</div>}
+              </div>
+            ))}
           </div>
         )}
-
-        {/* INVOICE */}
-        {tab==="invoice" && (
-          <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
-            <div style={{ fontWeight:700, fontSize:18, marginBottom:4 }}>🧾 Factura electrónica</div>
-            <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Llenás tus datos fiscales y te enviamos la factura.</div>
-            {(() => {
-              const [invForm, setInvForm] = useState({ legalName:"", idNum:"", address:"", email:session.email||"", phone:myClient?.phone||"", orderId:"", notes:"" });
-              const [invDone, setInvDone] = useState(false);
-              const [invLoad, setInvLoad] = useState(false);
-              const setI = (k,v) => setInvForm(p=>({...p,[k]:v}));
-              const submit = async () => {
-                if (!invForm.legalName.trim()||!invForm.idNum.trim()) return;
-                setInvLoad(true);
-                const ni = { id:uid(), clientId:myClient?.id||"", orderId:invForm.orderId||null, legalName:invForm.legalName.trim(), idNum:invForm.idNum.trim(), address:invForm.address.trim(), email:invForm.email.trim(), phone:invForm.phone.trim(), status:"pending", notes:invForm.notes.trim(), createdAt:new Date().toISOString() };
-                await sb.upsert("invoices", TABLE.invoices.toDb(ni));
-                setInvDone(true); setInvLoad(false);
-              };
-              return invDone ? (
-                <div style={{ textAlign:"center", padding:"20px 0" }}>
-                  <div style={{ fontSize:48, marginBottom:10 }}>✅</div>
-                  <div style={{ fontWeight:700, color:CP.green, fontSize:16 }}>¡Solicitud enviada!</div>
-                  <div style={{ color:CP.textMd, fontSize:13, marginTop:6 }}>Te enviamos la factura al correo indicado.</div>
-                </div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Nombre legal / Razón social *</label>
-                    <input value={invForm.legalName} onChange={e=>setI("legalName",e.target.value)} style={ISC()} />
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Cédula / RUC *</label>
-                      <input value={invForm.idNum} onChange={e=>setI("idNum",e.target.value)} style={ISC()} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Teléfono</label>
-                      <input value={invForm.phone} onChange={e=>setI("phone",e.target.value)} style={ISC()} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Correo para envío *</label>
-                    <input value={invForm.email} onChange={e=>setI("email",e.target.value)} style={ISC()} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Dirección fiscal</label>
-                    <input value={invForm.address} onChange={e=>setI("address",e.target.value)} style={ISC()} />
-                  </div>
-                  {orders.length>0 && (
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Orden asociada (opcional)</label>
-                      <select value={invForm.orderId} onChange={e=>setI("orderId",e.target.value)} style={ISC()}>
-                        <option value="">— Seleccionar —</option>
-                        {orders.map(o=><option key={o.id} value={o.id}>{fmtDate(o.date)} · {fmtCRC(o.total)}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <button onClick={submit} disabled={invLoad||!invForm.legalName.trim()||!invForm.idNum.trim()} style={{ padding:"14px", borderRadius:12, border:"none", background:(invLoad||!invForm.legalName.trim()||!invForm.idNum.trim())?"#CBD5E1":`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
-                    {invLoad?"Enviando…":"🧾 Solicitar factura"}
-                  </button>
-
-                  {/* Invoice history */}
-                  {myInvoices.length>0 && (
-                    <div style={{ marginTop:8 }}>
-                      <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>Mis facturas</div>
-                      {myInvoices.map(inv=>(
-                        <div key={inv.id} style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 14px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <div>
-                            <div style={{ fontWeight:600, fontSize:13 }}>{inv.legalName}</div>
-                            <div style={{ fontSize:12, color:CP.textSm }}>{fmtDate(inv.createdAt?.slice(0,10))}</div>
-                          </div>
-                          <span style={{ background: inv.status==="sent"?"#D1FAE5":"#FEF3C7", color:inv.status==="sent"?CP.green:CP.amber, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>
-                            {inv.status==="sent"?"Enviada":"Pendiente"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-      </div>
-
-      {/* BOTTOM NAV */}
-      <div style={{ position:"fixed", bottom:0, left:0, right:0, background:CP.navBg, borderTop:`1px solid rgba(255,255,255,.1)`, display:"flex", zIndex:100, paddingBottom:"env(safe-area-inset-bottom,0px)" }}>
-        {navItems.map(n=>(
-          <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1, padding:"10px 4px 8px", border:"none", background:"transparent", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-            <span style={{ fontSize:20 }}>{n.icon}</span>
-            <span style={{ fontSize:10, fontWeight:tab===n.id?700:400, color:tab===n.id?"#60A5FA":"rgba(255,255,255,.5)" }}>{n.label}</span>
-            {tab===n.id && <div style={{ width:4, height:4, borderRadius:"50%", background:"#60A5FA", marginTop:1 }} />}
-          </button>
-        ))}
       </div>
     </div>
   );
 }
 
+/* ═══════════════════════════════════════════════════
+   SUBCONTRACTS PAGE — Servicios tercerizados
+═══════════════════════════════════════════════════ */
+function SubcontractsPage({ data, save, toast }) {
+  const [modal, setModal] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const [search, setSearch] = useState("");
+
+  const subs = data.subcontracts || [];
+  const filtered = subs.filter(s =>
+    !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.provider.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const upsert = (item) => {
+    const list = item.id ? subs.map(s=>s.id===item.id?item:s) : [...subs,{...item,id:uid()}];
+    save({ subcontracts:list });
+    toast(item.id?"Subcontratación actualizada":"Subcontratación agregada");
+    setModal(null);
+  };
+
+  const del = (id) => { save({ subcontracts:subs.filter(s=>s.id!==id) }); toast("Eliminada","err"); setDelId(null); };
+
+  const totalValue = subs.reduce((s,x)=>s+(x.price||0),0);
+
+  return (
+    <div>
+      <PageHeader title={`Subcontrataciones (${subs.length})`} onNew={()=>setModal({mode:"new",item:{name:"",price:0,provider:"",leadTime:"",notes:""}})} newLabel="+ Nueva subcontratación" />
+
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px", marginBottom:18, display:"inline-block" }}>
+        <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Valor total catalogado</div>
+        <div style={{ fontSize:22, fontWeight:800, color:C.amber, marginTop:4 }}>{fmtCRC(totalValue)}</div>
+      </div>
+
+      <SearchBar value={search} onChange={setSearch} placeholder="Buscar por servicio o proveedor…" />
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14, marginTop:16 }}>
+        {filtered.map(s=>(
+          <div key={s.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:15 }}>{s.name}</div>
+                <div style={{ fontSize:12, color:C.blueHi, marginTop:3 }}>🏭 {s.provider || "Sin proveedor"}</div>
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:s})} />
+                <IBtn icon="🗑" red onClick={()=>setDelId(s.id)} />
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:12, marginTop:14, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
+              <Stat label="Precio" value={fmtCRC(s.price)} />
+              <Stat label="Entrega estimada" value={s.leadTime || "—"} />
+            </div>
+            {s.notes && <div style={{ marginTop:10, fontSize:12, color:C.textSm }}>💬 {s.notes}</div>}
+          </div>
+        ))}
+        {filtered.length===0 && <Empty msg="No hay subcontrataciones registradas" />}
+      </div>
+
+      {modal && <SubcontractModal item={modal.item} onSave={upsert} onClose={()=>setModal(null)} />}
+      {delId && <Confirm msg="¿Eliminar esta subcontratación?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+    </div>
+  );
+}
+
+function SubcontractModal({ item, onSave, onClose }) {
+  const [f, setF] = useState(item);
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  return (
+    <Modal title={item.id?"Editar subcontratación":"Nueva subcontratación"} onClose={onClose}>
+      <Field label="Nombre del servicio"><input value={f.name} onChange={e=>set("name",e.target.value)} style={IS()} placeholder="Pintura general, enderezado, polarizado…" /></Field>
+      <div style={{ marginTop:14 }}>
+        <Grid2>
+          <Field label="Precio (₡)"><input type="number" value={f.price} onChange={e=>set("price",+e.target.value)} style={IS()} /></Field>
+          <Field label="Proveedor / Taller"><input value={f.provider} onChange={e=>set("provider",e.target.value)} style={IS()} placeholder="Nombre del taller externo" /></Field>
+        </Grid2>
+      </div>
+      <div style={{ marginTop:14 }}>
+        <Field label="Tiempo estimado de entrega"><input value={f.leadTime} onChange={e=>set("leadTime",e.target.value)} style={IS()} placeholder="3 días, 1 semana…" /></Field>
+      </div>
+      <div style={{ marginTop:14 }}>
+        <Field label="Notas"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      </div>
+      <ModalActions onSave={()=>onSave(f)} onClose={onClose} />
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   QUOTES PAGE — Cotizaciones (admin)
+═══════════════════════════════════════════════════ */
+const QUOTE_STATUS = {
+  pending: { label:"Solicitada", color:"#F59E0B", bg:"#2D2000" },
+  quoted:  { label:"Cotizada",   color:"#3B82F6", bg:"#001A2D" },
+  sent:    { label:"Enviada",    color:"#10B981", bg:"#002D1A" },
+  closed:  { label:"Cerrada",    color:"#8B5CF6", bg:"#1A0A2D" },
+};
+
+function QuotesPage({ data, save, toast }) {
+  const [modal, setModal] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const [filter, setFilter] = useState("all");
+
+  const quotes = data.quotes || [];
+  const filtered = filter==="all" ? quotes : quotes.filter(q=>q.status===filter);
+  const sorted = [...filtered].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+
+  const upd = (id, patch) => {
+    save({ quotes: quotes.map(q=>q.id===id?{...q,...patch}:q) });
+  };
+
+  const del = (id) => { save({ quotes: quotes.filter(q=>q.id!==id) }); toast("Cotización eliminada","err"); setDelId(null); };
+
+  const buildWhatsAppLink = (q) => {
+    const client  = data.clients.find(c=>c.id===q.clientId);
+    const vehicle = data.vehicles.find(v=>v.id===q.vehicleId);
+    const svcLines = (q.services||[]).map(sid => {
+      const s = (data.services||SERVICES_CAT).find(x=>x.id===sid);
+      return s ? `• ${s.name} — ${fmtCRC(s.price)}` : null;
+    }).filter(Boolean).join("\n");
+
+    let msg = `Hola ${client?.name||""}, le compartimos la cotización de Tecno AutoAsisten CR:\n\n`;
+    if (vehicle) msg += `Vehículo: ${vehicle.year} ${vehicle.brand} ${vehicle.model} (${vehicle.plate})\n\n`;
+    msg += `Servicios cotizados:\n${svcLines || "—"}\n\n`;
+    msg += `*Total: ${fmtCRC(q.total)}*\n\n`;
+    if (q.notes) msg += `Notas: ${q.notes}\n\n`;
+    msg += `Cualquier consulta con gusto le atendemos. ¡Gracias por confiar en nosotros!`;
+
+    const phone = (client?.phone || "").replace(/\D/g,"");
+    const waPhone = phone ? (phone.startsWith("506") ? phone : `506${phone}`) : "";
+    return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const counts = {
+    pending: quotes.filter(q=>q.status==="pending").length,
+    quoted:  quotes.filter(q=>q.status==="quoted").length,
+    sent:    quotes.filter(q=>q.status==="sent").length,
+  };
+
+  return (
+    <div>
+      <PageHeader title={`Cotizaciones (${quotes.length})`} />
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+        {[["pending","Pendientes de armar",C.amber],["quoted","Listas para enviar",C.blueHi],["sent","Enviadas",C.green]].map(([k,l,color])=>(
+          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
+            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
+            <div style={{ fontSize:24, fontWeight:800, color, marginTop:5 }}>{counts[k]||0}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["all","Todas"],["pending","Solicitadas"],["quoted","Cotizadas"],["sent","Enviadas"],["closed","Cerradas"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${filter===v?C.blueHi:C.border}`, background:filter===v?`${C.blue}22`:"transparent", color:filter===v?C.blueHi:C.textMd, cursor:"pointer", fontSize:13, fontWeight:filter===v?700:400 }}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {sorted.map(q=>{
+          const client  = data.clients.find(c=>c.id===q.clientId);
+          const vehicle = data.vehicles.find(v=>v.id===q.vehicleId);
+          const sc = QUOTE_STATUS[q.status] || QUOTE_STATUS.pending;
+          return (
+            <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
+                <div style={{ flex:1, minWidth:200 }}>
+                  {/* Header */}
+                  <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:6 }}>
+                    <div style={{ fontWeight:700, fontSize:15 }}>{client?.name || "Cliente desconocido"}</div>
+                    {q.quoteType && (
+                      <span style={{ fontSize:11, fontWeight:700, background: q.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: q.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>
+                        {q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}
+                      </span>
+                    )}
+                  </div>
+                  {vehicle && <div style={{ fontSize:12, color:C.textSm, marginBottom:10 }}>🚗 {vehicle.plate} — {vehicle.brand} {vehicle.model}</div>}
+
+                  {/* Structured fields */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                    {q.possibleFailure && (
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>Falla / Revisión</div>
+                        <div style={{ fontSize:13, color:C.text }}>{q.possibleFailure}</div>
+                      </div>
+                    )}
+                    {q.possibleRepair && (
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>Reparación sugerida</div>
+                        <div style={{ fontSize:13, color:C.text }}>{q.possibleRepair}</div>
+                      </div>
+                    )}
+                    {q.description && (
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px", gridColumn:"span 2" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:4 }}>Detalles adicionales</div>
+                        <div style={{ fontSize:13, color:C.text }}>{q.description}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {q.services?.length > 0 && (
+                    <div style={{ marginTop:8, fontSize:12, color:C.textSm }}>
+                      Servicios: {q.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                  {q.total > 0 && <div style={{ fontWeight:800, fontSize:17, color:C.green, marginTop:8 }}>Total: {fmtCRC(q.total)}</div>}
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
+                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                    {q.status === "pending" && <TBtn label="✏️ Armar cotización" color={C.blueHi} onClick={()=>setModal({mode:"edit",item:q})} />}
+                    {(q.status === "quoted" || q.status==="sent") && <TBtn label="✏️ Editar" color={C.blueHi} onClick={()=>setModal({mode:"edit",item:q})} />}
+                    {q.status === "quoted" && client?.phone && (
+                      <a href={buildWhatsAppLink(q)} target="_blank" rel="noopener noreferrer" onClick={()=>upd(q.id,{status:"sent"})}
+                        style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.green}44`, background:`${C.green}18`, color:C.green, fontWeight:700, fontSize:12, textDecoration:"none", display:"inline-block" }}>
+                        📲 Enviar por WhatsApp
+                      </a>
+                    )}
+                    {q.status === "sent" && client?.phone && (
+                      <a href={buildWhatsAppLink(q)} target="_blank" rel="noopener noreferrer"
+                        style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:12, textDecoration:"none", display:"inline-block" }}>
+                        📲 Reenviar
+                      </a>
+                    )}
+                    {q.status !== "closed" && <TBtn label="✓ Cerrar" color={C.purple} onClick={()=>upd(q.id,{status:"closed"})} />}
+                    <IBtn icon="🗑" red onClick={()=>setDelId(q.id)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length===0 && <Empty msg="No hay cotizaciones en este filtro" />}
+      </div>
+
+      {modal && <QuoteModal item={modal.item} data={data} onSave={(item)=>{ upd(item.id, item); setModal(null); toast("Cotización actualizada"); }} onClose={()=>setModal(null)} />}
+      {delId && <Confirm msg="¿Eliminar esta cotización?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+    </div>
+  );
+}
+
+function QuoteModal({ item, data, onSave, onClose }) {
+  const [f, setF] = useState({ ...item, services: item.services || [] });
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const toggleSvc = (id) => setF(p=>({ ...p, services: p.services.includes(id) ? p.services.filter(s=>s!==id) : [...p.services, id] }));
+  const services = data.services || SERVICES_CAT;
+  const client = data.clients.find(c=>c.id===f.clientId);
+  const total = f.services.reduce((s,id)=>s+(services.find(x=>x.id===id)?.price||0),0);
+
+  return (
+    <Modal title="Armar cotización" onClose={onClose} wide>
+      <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16 }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+          <div style={{ fontSize:13, fontWeight:700 }}>{client?.name}</div>
+          {f.quoteType && <span style={{ fontSize:11, fontWeight:700, background: f.quoteType==="preventive"?`${C.blueHi}22`:`${C.amber}22`, color: f.quoteType==="preventive"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>{f.quoteType==="diagnosis"?"🔍 Diagnóstico":f.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</span>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          {f.possibleFailure && (
+            <div style={{ background:C.surface, borderRadius:8, padding:"10px 12px" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Falla / Revisión</div>
+              <div style={{ fontSize:13, color:C.text }}>{f.possibleFailure}</div>
+            </div>
+          )}
+          {f.possibleRepair && (
+            <div style={{ background:C.surface, borderRadius:8, padding:"10px 12px" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Reparación sugerida</div>
+              <div style={{ fontSize:13, color:C.text }}>{f.possibleRepair}</div>
+            </div>
+          )}
+          {f.description && (
+            <div style={{ background:C.surface, borderRadius:8, padding:"10px 12px", gridColumn:"span 2" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Detalles adicionales</div>
+              <div style={{ fontSize:13, color:C.text }}>{f.description}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Field label="Servicios a incluir">
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
+          {services.map(s=>{
+            const sel = f.services.includes(s.id);
+            return <button key={s.id} onClick={()=>toggleSvc(s.id)} style={{ padding:"7px 13px", borderRadius:8, border:`1px solid ${sel?C.blueHi:C.border}`, background:sel?`${C.blue}22`:"transparent", color:sel?C.blueHi:C.textMd, cursor:"pointer", fontSize:12, fontWeight:sel?700:400 }}>{s.name} · {fmtCRC(s.price)}</button>;
+          })}
+        </div>
+      </Field>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Monto adicional / ajuste manual (₡, opcional)">
+          <input type="number" value={f.manualAdjust||0} onChange={e=>set("manualAdjust",+e.target.value)} style={IS()} placeholder="0" />
+        </Field>
+      </div>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Notas para el cliente"><textarea value={f.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      </div>
+
+      <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginTop:16, display:"flex", justifyContent:"space-between" }}>
+        <span style={{ color:C.textMd, fontSize:14 }}>Total cotizado</span>
+        <span style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(total + (+f.manualAdjust||0))}</span>
+      </div>
+
+      <ModalActions onSave={()=>onSave({ ...f, total: total + (+f.manualAdjust||0), status: "quoted" })} onClose={onClose} />
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   RESET PASSWORD PAGE — desde link de recuperación
+═══════════════════════════════════════════════════ */
 function ResetPasswordPage({ token, onDone }) {
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
@@ -3733,385 +3941,6 @@ function ResetPasswordPage({ token, onDone }) {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   SERVICE REPORT MODAL — Informe de servicio
-═══════════════════════════════════════════════════ */
-function ServiceReportModal({ order, data, existing, onSave, onClose }) {
-  const client  = data.clients.find(c=>c.id===order.clientId);
-  const vehicle = data.vehicles.find(v=>v.id===order.vehicleId);
-  const [f, setF] = useState(existing || {
-    id: uid(), orderId: order.id, clientId: order.clientId, vehicleId: order.vehicleId,
-    mechanic: order.mechanic||"", worksDone: "", observations: "",
-    kmAtService: vehicle?.km||0, createdAt: new Date().toISOString()
-  });
-  const set = (k,v) => setF(p=>({...p,[k]:v}));
-
-  return (
-    <Modal title="📋 Informe de servicio" onClose={onClose} wide>
-      {/* Header info */}
-      <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Cliente</div>
-          <div style={{ fontWeight:700 }}>{client?.name||"—"}</div>
-        </div>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Vehículo</div>
-          <div style={{ fontWeight:700 }}>{vehicle?.plate} — {vehicle?.year} {vehicle?.brand} {vehicle?.model}</div>
-        </div>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Fecha</div>
-          <div>{fmtDate(order.date)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Mecánico</div>
-          <div>{order.mechanic||"—"}</div>
-        </div>
-      </div>
-
-      {/* Servicios realizados */}
-      <div style={{ marginBottom:14 }}>
-        <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:6 }}>Servicios realizados</div>
-        <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px", fontSize:13 }}>
-          {order.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).map((n,i)=>(
-            <div key={i} style={{ padding:"3px 0", borderBottom:`1px solid ${C.border}` }}>✅ {n}</div>
-          ))}
-          {order.parts?.length>0 && order.parts.map((p,i)=>(
-            <div key={`p${i}`} style={{ padding:"3px 0", borderBottom:`1px solid ${C.border}`, color:C.textSm }}>🔩 {p.name} × {p.qty}</div>
-          ))}
-        </div>
-      </div>
-
-      <Field label="Trabajos realizados *">
-        <textarea value={f.worksDone} onChange={e=>set("worksDone",e.target.value)} rows={4} placeholder="Ej: Se realizó cambio de aceite y filtro. Se inspeccionaron frenos delanteros y traseros encontrándose en buen estado…" style={{...IS(),resize:"vertical"}} />
-      </Field>
-
-      <div style={{ marginTop:14 }}>
-        <Field label="Observaciones / Recomendaciones">
-          <textarea value={f.observations} onChange={e=>set("observations",e.target.value)} rows={3} placeholder="Ej: Se recomienda revisión de llantas en próxima visita. Nivel de refrigerante bajo, se recomendó al cliente…" style={{...IS(),resize:"vertical"}} />
-        </Field>
-      </div>
-
-      <div style={{ marginTop:14 }}>
-        <Field label="Kilometraje al momento del servicio">
-          <input type="number" value={f.kmAtService} onChange={e=>set("kmAtService",+e.target.value)} style={IS()} placeholder="Ej: 87500" />
-        </Field>
-      </div>
-
-      <div style={{ background:`${C.green}11`, border:`1px solid ${C.green}33`, borderRadius:8, padding:"10px 14px", marginTop:14, fontSize:12, color:C.green }}>
-        📱 Este informe quedará visible para el cliente en su historial de vehículo dentro de la app.
-      </div>
-
-      <ModalActions onSave={()=>{ if(f.worksDone.trim()) onSave(f); }} onClose={onClose} />
-    </Modal>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   AI ASSISTANT PAGE — Asistente con acceso a datos reales
-═══════════════════════════════════════════════════ */
-function AIAssistantPage({ data, save, toast }) {
-  const [history, setHistory] = useState([
-    { role:"assistant", content:"¡Hola! Soy el asistente de Tecno AutoAsisten CR. Tengo acceso completo a los datos del taller. Puedo responder preguntas como:\n\n• ¿Cuántas citas tengo hoy?\n• ¿Qué órdenes están activas?\n• ¿Cuánto ingresé este mes?\n• ¿Quién es el cliente con más órdenes?\n\nTambién puedo ayudarte a actualizar estados de órdenes y citas. ¿En qué te ayudo?" }
-  ]);
-  const [question, setQuestion] = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const endRef = useRef(null);
-
-  const buildContext = () => {
-    const today = new Date().toISOString().slice(0,10);
-    const thisMonth = new Date().toISOString().slice(0,7);
-    const todayAppts = (data.appointments||[]).filter(a=>a.date===today);
-    const activeOrders = (data.orders||[]).filter(o=>o.status==="active");
-    const monthIncome = (data.orders||[]).filter(o=>o.status==="completed" && o.date?.startsWith(thisMonth)).reduce((s,o)=>s+o.total,0);
-    const pendingAppts = (data.appointments||[]).filter(a=>a.status==="pending");
-
-    return `Eres el asistente administrativo de Tecno AutoAsisten CR, un taller mecánico en Costa Rica.
-Hoy es ${today}. Moneda: Colones (₡).
-
-DATOS ACTUALES DEL TALLER:
-- Clientes: ${data.clients?.length||0}
-- Vehículos: ${data.vehicles?.length||0}
-- Citas HOY (${today}): ${todayAppts.length} → ${todayAppts.map(a=>{const c=data.clients?.find(x=>x.id===a.clientId);return `${c?.name||"?"} a las ${a.hour} (${a.status})`;}).join(", ")||"Ninguna"}
-- Citas pendientes de confirmar: ${pendingAppts.length}
-- Órdenes activas: ${activeOrders.length} → ${activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return `${c?.name||"?"} (₡${o.total})`;}).join(", ")||"Ninguna"}
-- Ingresos del mes (${thisMonth}): ₡${monthIncome.toLocaleString("es-CR")}
-- Trabajadores activos: ${(data.workers||[]).filter(w=>w.status==="active").map(w=>w.name).join(", ")||"Ninguno"}
-- Inventario con stock bajo: ${(data.inventory||[]).filter(i=>i.qty<=i.minQty).map(i=>i.name).join(", ")||"Ninguno"}
-
-LISTA DE CITAS (próximas 7 días):
-${(data.appointments||[]).filter(a=>a.date>=today).slice(0,10).map(a=>{
-  const c=data.clients?.find(x=>x.id===a.clientId);
-  const v=data.vehicles?.find(x=>x.id===a.vehicleId);
-  return `ID:${a.id} | ${a.date} ${a.hour} | ${c?.name||"?"} | ${v?.plate||"?"} | ${a.status}`;
-}).join("\n")||"Ninguna"}
-
-ÓRDENES ACTIVAS:
-${activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return `ID:${o.id} | ${c?.name||"?"} | ₡${o.total} | ${o.mechanic}`;}).join("\n")||"Ninguna"}
-
-Responde en español de Costa Rica. Sé conciso y práctico. Si el usuario pide actualizar algo, incluye al final del mensaje una línea con formato JSON así:
-ACTION: {"type":"update_appointment","id":"xxx","status":"confirmed"}
-o: ACTION: {"type":"update_order","id":"xxx","status":"completed"}
-Solo incluye ACTION si el usuario explícitamente pide hacer un cambio.`;
-  };
-
-  const handleAction = async (actionStr) => {
-    try {
-      const action = JSON.parse(actionStr);
-      if (action.type === "update_appointment") {
-        const list = (data.appointments||[]).map(a=>a.id===action.id?{...a,status:action.status}:a);
-        save({ appointments:list });
-        toast(`Cita actualizada a: ${action.status}`);
-      } else if (action.type === "update_order") {
-        const list = (data.orders||[]).map(o=>o.id===action.id?{...o,status:action.status}:o);
-        save({ orders:list });
-        toast(`Orden actualizada a: ${action.status}`);
-      }
-    } catch(e) { console.error("Action parse error:", e); }
-  };
-
-  const send = async () => {
-    if (!question.trim() || loading) return;
-    const q = question.trim();
-    setQuestion("");
-    const newHistory = [...history, { role:"user", content:q }];
-    setHistory(newHistory);
-    setLoading(true);
-
-    try {
-      const msgs = newHistory.map(m=>({ role:m.role, content:m.content }));
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({
-          model:"claude-sonnet-4-6",
-          max_tokens:1000,
-          system: buildContext(),
-          messages: msgs
-        })
-      });
-      const d = await res.json();
-      let answer = d.content?.map(b=>b.text||"").join("") || "Sin respuesta.";
-
-      // Extract and execute action if present
-      const actionMatch = answer.match(/ACTION:\s*(\{[^}]+\})/);
-      if (actionMatch) {
-        await handleAction(actionMatch[1]);
-        answer = answer.replace(/ACTION:\s*\{[^}]+\}/, "").trim();
-        answer += "\n\n✅ Acción ejecutada correctamente.";
-      }
-
-      setHistory(h=>[...h, { role:"assistant", content:answer }]);
-    } catch(e) {
-      setHistory(h=>[...h, { role:"assistant", content:"Error al conectar. Intentá de nuevo." }]);
-    }
-    setLoading(false);
-    setTimeout(()=>endRef.current?.scrollIntoView({ behavior:"smooth" }),100);
-  };
-
-  // Quick action buttons
-  const quickActions = [
-    "¿Cuántas citas tengo hoy?",
-    "¿Qué órdenes están activas?",
-    "¿Cuánto ingresé este mes?",
-    "¿Hay productos con stock bajo?",
-    "¿Cuántas citas pendientes de confirmar?",
-    "Resumen del taller hoy",
-  ];
-
-  return (
-    <div style={{ maxWidth:800, margin:"0 auto", display:"flex", flexDirection:"column", height:"calc(100vh - 160px)" }}>
-      <AIPageHeader icon="🧠" title="Asistente IA del Taller" desc="Preguntá sobre citas, órdenes, clientes, ingresos — o pedile que actualice estados." />
-
-      {/* Quick actions */}
-      {history.length<=1 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:12, color:C.textSm, marginBottom:8 }}>Acciones rápidas:</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {quickActions.map(q=>(
-              <button key={q} onClick={()=>setQuestion(q)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.textMd, cursor:"pointer", fontSize:12, transition:"all .1s" }}>
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Chat */}
-      <div style={{ flex:1, overflowY:"auto", border:`1px solid ${C.border}`, borderRadius:12, padding:"16px", marginBottom:14, background:C.card, display:"flex", flexDirection:"column", gap:16 }}>
-        {history.map((m,i)=>(
-          <div key={i} style={{ display:"flex", gap:10, justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
-            {m.role==="assistant" && (
-              <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>🧠</div>
-            )}
-            <div style={{ maxWidth:"78%", background:m.role==="user"?`${C.blue}22`:C.bg, border:`1px solid ${m.role==="user"?C.blueHi:C.border}`, borderRadius:12, padding:"12px 16px", fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap" }}>
-              {m.content}
-            </div>
-            {m.role==="user" && (
-              <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👤</div>
-            )}
-          </div>
-        ))}
-        {loading && (
-          <div style={{ display:"flex", gap:10 }}>
-            <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🧠</div>
-            <div style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 16px", display:"flex", alignItems:"center", gap:8, color:C.textMd, fontSize:13 }}>
-              <Spinner />Consultando datos del taller…
-            </div>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-
-      {/* Input */}
-      <div style={{ display:"flex", gap:10 }}>
-        <input
-          value={question}
-          onChange={e=>setQuestion(e.target.value)}
-          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey&&!loading) { e.preventDefault(); send(); } }}
-          placeholder="Preguntá algo o pedí una acción… (Enter para enviar)"
-          style={{...IS(), flex:1, padding:"12px 16px", fontSize:14}}
-        />
-        <button onClick={send} disabled={loading||!question.trim()} style={{ padding:"12px 20px", borderRadius:10, border:"none", background:loading||!question.trim()?C.border:`linear-gradient(135deg,${C.purple},${C.blue})`, color:"#fff", fontWeight:700, cursor:loading||!question.trim()?"default":"pointer", fontSize:16 }}>→</button>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   INVOICES PAGE — Admin gestión de facturas
-═══════════════════════════════════════════════════ */
-function InvoicesPage({ data, save, toast }) {
-  const [filter, setFilter] = useState("all");
-  const [delId,  setDelId]  = useState(null);
-
-  const invoices = data.invoices || [];
-  const filtered = filter==="all" ? invoices : invoices.filter(i=>i.status===filter);
-  const sorted   = [...filtered].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
-
-  const upd = (id, patch) => {
-    save({ invoices: invoices.map(i=>i.id===id?{...i,...patch}:i) });
-    toast("Estado actualizado");
-  };
-  const del = (id) => { save({ invoices: invoices.filter(i=>i.id!==id) }); toast("Eliminada","err"); setDelId(null); };
-
-  const STATUS_INV = {
-    pending:    { label:"Pendiente",   color:"#F59E0B", bg:"#2D1A00" },
-    processing: { label:"En proceso",  color:"#3B82F6", bg:"#001A2D" },
-    sent:       { label:"Enviada",     color:"#10B981", bg:"#002D1A" },
-    cancelled:  { label:"Cancelada",   color:"#EF4444", bg:"#2D0000" },
-  };
-
-  const buildPDF = (inv) => {
-    const client = data.clients.find(c=>c.id===inv.clientId);
-    const order  = inv.orderId ? data.orders.find(o=>o.id===inv.orderId) : null;
-    const svcLines = order ? order.services.map(sid=>{
-      const s=(data.services||SERVICES_CAT).find(x=>x.id===sid);
-      return s ? `${s.name}: ${fmtCRC(s.price)}` : null;
-    }).filter(Boolean) : [];
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura - Tecno AutoAsisten CR</title>
-<style>body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;color:#111;padding:20px}
-h1{color:#1e3a5f;border-bottom:3px solid #1e3a5f;padding-bottom:10px}
-.header{display:flex;justify-content:space-between;margin-bottom:30px}
-.section{margin-bottom:20px}.section h3{color:#444;border-bottom:1px solid #ddd;padding-bottom:5px}
-table{width:100%;border-collapse:collapse}.table td,.table th{padding:8px;border:1px solid #ddd;text-align:left}
-.table th{background:#f0f4ff}.total{font-size:20px;font-weight:bold;color:#1e3a5f;text-align:right;margin-top:15px}
-.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #ddd;padding-top:15px}
-</style></head><body>
-<h1>🔧 Tecno AutoAsisten CR</h1>
-<div class="header">
-  <div><strong>FACTURA ELECTRÓNICA</strong><br>Fecha: ${new Date().toLocaleDateString("es-CR")}<br>N°: FAC-${inv.id?.slice(0,6).toUpperCase()}</div>
-  <div style="text-align:right">Estado: <strong>${STATUS_INV[inv.status]?.label||"Pendiente"}</strong></div>
-</div>
-<div class="section"><h3>Datos del cliente</h3>
-<p><strong>Nombre:</strong> ${inv.legalName}</p>
-<p><strong>Cédula/RUC:</strong> ${inv.idNum}</p>
-<p><strong>Correo:</strong> ${inv.email}</p>
-<p><strong>Teléfono:</strong> ${inv.phone}</p>
-${inv.address?`<p><strong>Dirección:</strong> ${inv.address}</p>`:""}
-</div>
-${order?`<div class="section"><h3>Detalle de servicios</h3>
-<table class="table"><tr><th>Descripción</th><th>Monto</th></tr>
-${svcLines.map(l=>`<tr><td>${l.split(":")[0]}</td><td>${l.split(":")[1]}</td></tr>`).join("")}
-${order.parts?.map(p=>`<tr><td>${p.name} × ${p.qty}</td><td>${fmtCRC(p.price*p.qty)}</td></tr>`).join("")||""}
-</table>
-<div class="total">Total: ${fmtCRC(order.total)}</div></div>`:""}
-${inv.notes?`<div class="section"><h3>Notas</h3><p>${inv.notes}</p></div>`:""}
-<div class="footer">Tecno AutoAsisten CR · Costa Rica · tecno-autoasisten.vercel.app<br>
-<em>Este documento es una representación de factura electrónica.</em></div>
-</body></html>`;
-
-    const blob = new Blob([html], { type:"text/html" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `Factura-${inv.legalName.replace(/\s+/g,"-")}-${inv.id?.slice(0,6)}.html`;
-    a.click(); URL.revokeObjectURL(url);
-  };
-
-  const counts = { pending:invoices.filter(i=>i.status==="pending").length, processing:invoices.filter(i=>i.status==="processing").length, sent:invoices.filter(i=>i.status==="sent").length };
-
-  return (
-    <div>
-      <div style={{ fontWeight:800, fontSize:22, marginBottom:6 }}>🧾 Facturas electrónicas</div>
-      <div style={{ color:C.textMd, fontSize:14, marginBottom:20 }}>Solicitudes de factura de clientes. Descargá el PDF y enviáselo por correo o WhatsApp.</div>
-
-      {/* Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
-        {[["pending","Pendientes",C.amber],["processing","En proceso",C.blueHi],["sent","Enviadas",C.green]].map(([k,l,color])=>(
-          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
-            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
-            <div style={{ fontSize:26, fontWeight:800, color, marginTop:5 }}>{counts[k]||0}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-        {[["all","Todas"],["pending","Pendientes"],["processing","En proceso"],["sent","Enviadas"],["cancelled","Canceladas"]].map(([v,l])=>(
-          <button key={v} onClick={()=>setFilter(v)} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${filter===v?C.blueHi:C.border}`, background:filter===v?`${C.blue}22`:"transparent", color:filter===v?C.blueHi:C.textMd, cursor:"pointer", fontSize:13, fontWeight:filter===v?700:400 }}>{l}</button>
-        ))}
-      </div>
-
-      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-        {sorted.map(inv=>{
-          const client = data.clients.find(c=>c.id===inv.clientId);
-          const order  = inv.orderId ? data.orders.find(o=>o.id===inv.orderId) : null;
-          const sc = STATUS_INV[inv.status]||STATUS_INV.pending;
-          return (
-            <div key={inv.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
-                <div style={{ flex:1, minWidth:200 }}>
-                  <div style={{ fontWeight:700, fontSize:15 }}>{inv.legalName}</div>
-                  <div style={{ fontSize:12, color:C.textSm, marginTop:3 }}>🪪 {inv.idNum} · 👤 {client?.name||"—"}</div>
-                  <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>✉️ {inv.email} · 📱 {inv.phone}</div>
-                  {inv.address && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>📍 {inv.address}</div>}
-                  {order && <div style={{ fontSize:12, color:C.green, marginTop:4, fontWeight:600 }}>Orden: {fmtDate(order.date)} · {fmtCRC(order.total)}</div>}
-                  {inv.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:4 }}>💬 {inv.notes}</div>}
-                  <div style={{ fontSize:11, color:C.textSm, marginTop:4 }}>Solicitada: {fmtDate(inv.createdAt?.slice(0,10))}</div>
-                </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
-                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
-                    {inv.status==="pending" && <TBtn label="▶ En proceso" color={C.blueHi} onClick={()=>upd(inv.id,{status:"processing"})} />}
-                    <button onClick={()=>buildPDF(inv)} style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.purple}44`, background:`${C.purple}18`, color:C.purple, fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                      📄 Generar PDF
-                    </button>
-                    {inv.status!=="sent" && inv.status!=="cancelled" && <TBtn label="✅ Marcar enviada" color={C.green} onClick={()=>upd(inv.id,{status:"sent"})} />}
-                    <IBtn icon="🗑" red onClick={()=>setDelId(inv.id)} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {sorted.length===0 && <Empty msg="No hay solicitudes de factura" />}
-      </div>
-
-      {delId && <Confirm msg="¿Eliminar esta solicitud?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
     </div>
   );
 }
