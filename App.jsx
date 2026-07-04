@@ -2520,161 +2520,1457 @@ async function callClaude(systemPrompt, messages) {
   return d.content?.map(b=>b.text||"").join("") || "Sin respuesta.";
 }
 
-function AIAssistantPage({ data, save, toast }) {
-  const [history, setHistory] = useState([
-    { role:"assistant", content:"Hola! Soy el asistente de Tecno AutoAsisten CR.\n\nPuedo ayudarte con todo en una sola conversacion:\n\n Diagnostico tecnico: describime el problema de un vehiculo\n Presupuestos: pedime una cotizacion y la redacto lista para WhatsApp\n Consultas de manuales: torques, especificaciones, procedimientos\n Datos del taller: citas, ordenes, ingresos, inventario\n Acciones: confirmar citas, actualizar ordenes\n\nQue necesitas?" }
-  ]);
-  const [input,   setInput]   = useState("");
-  const [loading, setLoading] = useState(false);
-  const endRef = useRef(null);
+function Spinner() {
+  return <span style={{ display:"inline-block", width:14, height:14, border:"2px solid #ffffff44", borderTop:"2px solid #fff", borderRadius:"50%", animation:"spin .7s linear infinite" }}>
+    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+  </span>;
+}
 
-  const buildSystem = () => {
-    const todayStr = new Date().toISOString().slice(0,10);
-    const thisMonth = new Date().toISOString().slice(0,7);
-    const todayAppts = (data.appointments||[]).filter(a=>a.date===todayStr);
-    const activeOrders = (data.orders||[]).filter(o=>o.status==="active");
-    const pendingAppts = (data.appointments||[]).filter(a=>a.status==="pending");
-    const monthIncome = (data.orders||[]).filter(o=>o.status==="completed"&&o.date?.startsWith(thisMonth)).reduce((s,o)=>s+o.total,0);
-    const lowStock = (data.inventory||[]).filter(i=>i.qty<=i.minQty);
+function PasswordField({ value, onChange, onKeyDown, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position:"relative" }}>
+      <input
+        type={show?"text":"password"}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        style={{...IS(), padding:"12px 44px 12px 14px"}}
+      />
+      <button
+        type="button"
+        onClick={()=>setShow(s=>!s)}
+        style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:C.textSm, fontSize:16, padding:4 }}
+        tabIndex={-1}
+      >
+        {show ? "🙈" : "👁️"}
+      </button>
+    </div>
+  );
+}
 
-    return "Eres el asistente inteligente de Tecno AutoAsisten CR, un taller de diagnostico automotriz en Costa Rica. " +
-    "Eres experto en mecanica automotriz, diagnostico, presupuestos, manuales tecnicos Y gestion del taller. " +
-    "Hoy es " + todayStr + ". Moneda: Colones costarricenses. Idioma: espanol de Costa Rica. " +
-    "Sé conciso, directo y util.\n\n" +
-    "DATOS EN TIEMPO REAL DEL TALLER:\n" +
-    "Clientes: " + (data.clients?.length||0) + "\n" +
-    "Vehiculos: " + (data.vehicles?.length||0) + "\n" +
-    "Citas HOY: " + todayAppts.length + (todayAppts.length>0 ? " -> " + todayAppts.map(a=>{const c=data.clients?.find(x=>x.id===a.clientId);return (c?.name||"?")+" "+a.hour+" ("+a.status+")"}).join(", ") : "") + "\n" +
-    "Citas pendientes de confirmar: " + pendingAppts.length + "\n" +
-    "Ordenes activas: " + activeOrders.length + (activeOrders.length>0 ? " -> " + activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return (c?.name||"?")+" ("+o.total.toLocaleString()+")"}).join(", ") : "") + "\n" +
-    "Ingresos del mes (" + thisMonth + "): " + monthIncome.toLocaleString("es-CR") + " colones\n" +
-    "Trabajadores activos: " + ((data.workers||[]).filter(w=>w.status==="active").map(w=>w.name).join(", ")||"Ninguno") + "\n" +
-    (lowStock.length>0 ? "Stock bajo: " + lowStock.map(i=>i.name).join(", ") + "\n" : "Inventario OK\n") + "\n" +
-    "PROXIMAS CITAS:\n" +
-    ((data.appointments||[]).filter(a=>a.date>=todayStr&&a.status!=="cancelled").slice(0,8).map(a=>{
-      const c=data.clients?.find(x=>x.id===a.clientId);
-      const v=data.vehicles?.find(x=>x.id===a.vehicleId);
-      const svc=(data.services||[]).find(s=>s.id===a.serviceId);
-      return "ID:"+a.id+" | "+a.date+" "+a.hour+" | "+(c?.name||"?")+" | "+(v?.plate||"?")+" | "+(svc?.name||a.serviceId)+" | "+a.status;
-    }).join("\n")||"Ninguna") + "\n\n" +
-    "ORDENES ACTIVAS:\n" +
-    (activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return "ID:"+o.id+" | "+(c?.name||"?")+" | "+o.total.toLocaleString()+" | "+o.mechanic;}).join("\n")||"Ninguna") + "\n\n" +
-    "SERVICIOS: " + ((data.services||[]).map(s=>s.name+"("+s.price+")").join(", ")) + "\n\n" +
-    "BIBLIOTECA: " + ((data.library||[]).map(b=>b.title+" ["+b.brand+" "+b.model+" "+b.year+"]").join(", ")||"Vacia") + "\n\n" +
-    "ACCIONES DISPONIBLES: Si el usuario pide explicitamente actualizar algo, incluye al final:\n" +
-    "ACTION_APPT:{id:xxx,status:confirmed} — para citas\n" +
-    "ACTION_ORDER:{id:xxx,status:completed} — para ordenes\n" +
-    "Solo incluye ACTION si el usuario lo pide. Para presupuestos, redactalos completos listos para copiar.";
+
+/* ═══════════════════════════════════════════════════
+   AUTH PAGE — Login / Registro con aprobación manual
+═══════════════════════════════════════════════════ */
+function AuthPage({ onLogin }) {
+  const [mode,     setMode]     = useState("login"); // "login" | "register" | "forgot"
+  const [name,     setName]     = useState("");
+  const [phone,    setPhone]    = useState("");
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+  const [pending,  setPending]  = useState(false);
+  const [resetSent,setResetSent]= useState(false);
+  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem("tac_remember_email"));
+  const [biometricAvail, setBiometricAvail] = useState(false);
+
+  useEffect(()=>{
+    // Pre-fill remembered email
+    const saved = localStorage.getItem("tac_remember_email");
+    if (saved) setEmail(saved);
+    // Check if biometric auth is available
+    if (window.PublicKeyCredential) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then(avail => setBiometricAvail(avail))
+        .catch(()=>{});
+    }
+  },[]);
+
+  const handleBiometric = async () => {
+    setError("");
+    const savedEmail = localStorage.getItem("tac_remember_email");
+    const savedPw    = localStorage.getItem("tac_pw_enc");
+
+    if (!savedEmail || !savedPw) {
+      setError("Iniciá sesión con tu correo y contraseña una primera vez y activá 'Recordar mi correo'. Luego podrás usar Face ID.");
+      return;
+    }
+
+    try {
+      // Check if we have a registered credential
+      const credId = localStorage.getItem("tac_cred_id");
+
+      if (!credId) {
+        // REGISTER: create a new credential tied to this device
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+        const userId = new Uint8Array(16);
+        window.crypto.getRandomValues(userId);
+
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp:   { name:"Tecno AutoAsisten CR", id: window.location.hostname },
+            user: { id: userId, name: savedEmail, displayName: savedEmail },
+            pubKeyCredParams: [{ type:"public-key", alg:-7 }, { type:"public-key", alg:-257 }],
+            authenticatorSelection: { userVerification:"required", authenticatorAttachment:"platform" },
+            timeout: 60000,
+          }
+        });
+        localStorage.setItem("tac_cred_id", btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
+        // Now log in with stored credentials
+        await loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin);
+        return;
+      }
+
+      // AUTHENTICATE: verify with existing credential
+      const challenge2 = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge2);
+      const rawId = Uint8Array.from(atob(credId), c=>c.charCodeAt(0));
+      await navigator.credentials.get({
+        publicKey: {
+          challenge: challenge2,
+          allowCredentials: [{ type:"public-key", id: rawId }],
+          userVerification: "required",
+          timeout: 60000,
+        }
+      });
+      // Biometric passed — log in with stored credentials
+      await loginWithStored(savedEmail, savedPw, setError, setLoading, onLogin);
+
+    } catch(e) {
+      if (e.name === "NotAllowedError") setError("Face ID cancelado.");
+      else if (e.name === "InvalidStateError") setError("Ya hay una credencial registrada. Intentá de nuevo.");
+      else setError("Face ID no disponible en este dispositivo.");
+    }
   };
 
-  const handleActions = (text) => {
-    const apptMatch = text.match(/ACTION_APPT:\s*\{([^}]+)\}/);
-    const orderMatch = text.match(/ACTION_ORDER:\s*\{([^}]+)\}/);
-    let acted = false;
-    if (apptMatch) {
-      try {
-        const pairs = apptMatch[1].split(",").reduce((acc,p)=>{ const [k,v]=p.split(":"); acc[k.trim()]=v.trim().replace(/["']/g,""); return acc; },{});
-        const list = (data.appointments||[]).map(x=>x.id===pairs.id?{...x,status:pairs.status}:x);
-        save({ appointments:list }); toast("Cita actualizada: "+pairs.status); acted = true;
-      } catch(e) {}
+  const handleForgotPassword = async () => {
+    setError("");
+    if (!email.trim()) { setError("Ingresá tu correo electrónico."); return; }
+    setLoading(true);
+    try {
+      await auth.resetPassword(email.trim());
+      setResetSent(true);
+    } catch(e) {
+      setError("Error de conexión. Intentá de nuevo.");
     }
-    if (orderMatch) {
-      try {
-        const pairs = orderMatch[1].split(",").reduce((acc,p)=>{ const [k,v]=p.split(":"); acc[k.trim()]=v.trim().replace(/["']/g,""); return acc; },{});
-        const list = (data.orders||[]).map(x=>x.id===pairs.id?{...x,status:pairs.status}:x);
-        save({ orders:list }); toast("Orden actualizada: "+pairs.status); acted = true;
-      } catch(e) {}
+    setLoading(false);
+  };
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!email.trim() || !password.trim()) { setError("Ingresá tu correo y contraseña."); return; }
+    if (mode === "register") {
+      if (!name.trim())  { setError("Ingresá tu nombre completo."); return; }
+      if (!phone.trim()) { setError("Ingresá tu número de teléfono."); return; }
+      if (password !== confirm) { setError("Las contraseñas no coinciden."); return; }
+      if (password.length < 6)  { setError("La contraseña debe tener al menos 6 caracteres."); return; }
     }
-    return text
-      .replace(/ACTION_APPT:\s*\{[^}]+\}/g, acted ? "\n\n✅ Accion ejecutada correctamente." : "")
-      .replace(/ACTION_ORDER:\s*\{[^}]+\}/g, "")
-      .trim();
+
+    setLoading(true);
+    try {
+      if (mode === "register") {
+        // 1. Create auth user
+        const res = await auth.signUp(email.trim(), password);
+        if (res.error) { setError(res.error.message || "Error al registrarse."); setLoading(false); return; }
+
+        // 2. Try to sign in immediately to get a token (works when email confirm is off)
+        // If email confirm is ON, Supabase won't let us log in yet — we store the pending record anyway
+        const signInRes = await auth.signIn(email.trim(), password);
+        const userId = res.user?.id || res.id || signInRes.user?.id;
+        const token  = signInRes.access_token;
+
+        // 3. Save profile in pending_users table
+        if (userId) {
+          await fetch(`${SB_URL}/rest/v1/pending_users`, {
+            method: "POST",
+            headers: { apikey: SB_KEY, Authorization: `Bearer ${token||SB_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ id: userId, name: name.trim(), phone: phone.trim(), email: email.trim(), status: "pending", role: "client", created_at: new Date().toISOString() })
+          });
+        }
+        setPending(true);
+
+      } else {
+        // LOGIN — try sign in
+        const res = await auth.signIn(email.trim(), password);
+
+        // Handle "Email not confirmed" error specifically
+        if (res.error?.message?.toLowerCase().includes("email not confirmed")) {
+          // Try to check pending_users by email instead
+          const checkByEmail = await fetch(`${SB_URL}/rest/v1/pending_users?email=eq.${encodeURIComponent(email.trim())}&select=status,name,role`, {
+            headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+          });
+          const rows = await checkByEmail.json();
+          const row  = rows?.[0];
+          if (row?.status === "pending") {
+            setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
+          } else if (row?.status === "approved") {
+            setError("Tu cuenta fue aprobada pero necesita confirmación de correo. Revisá tu bandeja de entrada.");
+          } else {
+            setError("Correo o contraseña incorrectos.");
+          }
+          setLoading(false); return;
+        }
+
+        if (res.error || !res.access_token) {
+          setError(res.error?.message || "Correo o contraseña incorrectos.");
+          setLoading(false); return;
+        }
+
+        // Check approval status
+        const userId = res.user?.id;
+        const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name,role`, {
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
+        });
+        const userRows = await checkRes.json();
+        const userRow  = userRows?.[0];
+
+        if (!userRow) {
+          if (rememberMe) {
+            localStorage.setItem("tac_remember_email", email.trim());
+            const enc = btoa(password.split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join(""));
+            localStorage.setItem("tac_pw_enc", enc);
+          } else { localStorage.removeItem("tac_remember_email"); localStorage.removeItem("tac_pw_enc"); }
+          onLogin(res.access_token, res.user?.email || email.trim(), "admin");
+        } else if (userRow.status === "approved") {
+          if (rememberMe) {
+            localStorage.setItem("tac_remember_email", email.trim());
+            const enc = btoa(password.split("").map((c,i)=>String.fromCharCode(c.charCodeAt(0)^(i%7+3))).join(""));
+            localStorage.setItem("tac_pw_enc", enc);
+          } else { localStorage.removeItem("tac_remember_email"); localStorage.removeItem("tac_pw_enc"); }
+          onLogin(res.access_token, userRow.name || res.user?.email, userRow.role || "client");
+        } else if (userRow.status === "pending") {
+          setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
+        } else {
+          setError("Tu cuenta fue rechazada. Contactá al administrador.");
+        }
+      }
+    } catch(e) {
+      setError("Error de conexión. Verificá tu internet.");
+    }
+    setLoading(false);
+  };
+
+  if (pending) return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ maxWidth:420, textAlign:"center" }}>
+        <div style={{ fontSize:64, marginBottom:20 }}>⏳</div>
+        <div style={{ fontWeight:800, fontSize:22, color:C.text, marginBottom:12 }}>Solicitud enviada</div>
+        <div style={{ color:C.textMd, fontSize:15, lineHeight:1.7, background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"20px 24px" }}>
+          Tu cuenta fue creada y está <strong style={{ color:C.amber }}>pendiente de aprobación</strong>.<br/><br/>
+          El administrador del taller revisará tu solicitud y te dará acceso.<br/><br/>
+          <span style={{ fontSize:13, color:C.textSm }}>Si ya fuiste aprobado, intentá iniciar sesión.</span>
+        </div>
+        <button onClick={()=>{ setPending(false); setMode("login"); setPassword(""); setConfirm(""); }} style={{ marginTop:20, padding:"11px 28px", borderRadius:10, border:"none", background:C.blue, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
+          Ir a iniciar sesión
+        </button>
+      </div>
+    </div>
+  );
+
+  if (mode === "forgot") return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔑</div>
+          <div style={{ fontWeight:800, fontSize:22, color:C.text }}>Recuperar contraseña</div>
+          <div style={{ fontSize:13, color:C.textSm, marginTop:6 }}>Te enviaremos un enlace a tu correo para restablecerla</div>
+        </div>
+
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
+          {resetSent ? (
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontSize:48, marginBottom:14 }}>📩</div>
+              <div style={{ color:C.green, fontWeight:700, fontSize:16, marginBottom:8 }}>¡Correo enviado!</div>
+              <div style={{ color:C.textMd, fontSize:14, lineHeight:1.6 }}>
+                Revisá tu bandeja de entrada (y spam) en <strong style={{color:C.text}}>{email}</strong>. Seguí el enlace para crear una nueva contraseña.
+              </div>
+              <button onClick={()=>{ setMode("login"); setResetSent(false); setEmail(""); }} style={{ marginTop:20, width:"100%", padding:"12px", borderRadius:10, border:"none", background:C.blue, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                Volver a iniciar sesión
+              </button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Correo electrónico</label>
+                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleForgotPassword()} placeholder="tucorreo@email.com" style={{...IS(), padding:"12px 14px"}} />
+              </div>
+              {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
+              <button onClick={handleForgotPassword} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                {loading ? <><Spinner />Enviando…</> : "Enviar enlace de recuperación →"}
+              </button>
+              <button onClick={()=>{ setMode("login"); setError(""); }} style={{ marginTop:14, width:"100%", padding:"10px", borderRadius:10, border:"none", background:"transparent", color:C.textMd, fontSize:13, cursor:"pointer" }}>
+                ← Volver a iniciar sesión
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:440 }}>
+
+        {/* Logo */}
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔧</div>
+          <div style={{ fontWeight:800, fontSize:24, color:C.text }}>Tecno AutoAsisten <span style={{ color:C.blueHi }}>CR</span></div>
+          <div style={{ fontSize:13, color:C.textSm, marginTop:4 }}>Sistema de Gestión del Taller</div>
+        </div>
+
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
+          {/* Tabs */}
+          <div style={{ display:"flex", gap:4, background:C.bg, borderRadius:10, padding:4, marginBottom:24 }}>
+            {[["login","Iniciar sesión"],["register","Solicitar acceso"]].map(([m,l])=>(
+              <button key={m} onClick={()=>{ setMode(m); setError(""); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"none", cursor:"pointer", background:mode===m?C.blue:"transparent", color:mode===m?"#fff":C.textMd, fontWeight:mode===m?700:400, fontSize:13, transition:"all .15s" }}>{l}</button>
+            ))}
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            {mode==="register" && <>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Nombre completo *</label>
+                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Juan Pérez" style={{...IS(), padding:"12px 14px"}} />
+              </div>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Teléfono *</label>
+                <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="8800-0000" style={{...IS(), padding:"12px 14px"}} />
+              </div>
+            </>}
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Correo electrónico *</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="tucorreo@email.com" style={{...IS(), padding:"12px 14px"}} />
+            </div>
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Contraseña *</label>
+              <PasswordField value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Mínimo 6 caracteres" />
+            </div>
+            {mode==="register" && (
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña *</label>
+                <PasswordField value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" />
+              </div>
+            )}
+          </div>
+
+          {mode==="login" && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:4 }}>
+              <input type="checkbox" id="remember" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)} style={{ width:16, height:16, cursor:"pointer", accentColor:C.blueHi }} />
+              <label htmlFor="remember" style={{ fontSize:13, color:C.textMd, cursor:"pointer" }}>Recordar mi correo</label>
+            </div>
+          )}
+
+          {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
+
+          {mode==="register" && (
+            <div style={{ marginTop:14, background:`${C.amber}11`, border:`1px solid ${C.amber}33`, borderRadius:8, padding:"10px 14px", fontSize:12, color:C.amber }}>
+              ⚠️ Tu cuenta será revisada por el administrador antes de activarse.
+            </div>
+          )}
+
+          <button onClick={handleSubmit} disabled={loading} style={{ marginTop:16, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+            {loading ? <><Spinner />{mode==="login"?"Entrando…":"Enviando solicitud…"}</> : mode==="login" ? "Entrar al sistema →" : "Enviar solicitud →"}
+          </button>
+
+          {mode==="login" && biometricAvail && (
+            <button onClick={handleBiometric} style={{ marginTop:10, width:"100%", padding:"11px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              🔐 {localStorage.getItem("tac_cred_id") ? "Entrar con Face ID / Huella" : "Activar Face ID / Huella"}
+            </button>
+          )}
+
+          {mode==="login" && (
+            <button onClick={()=>{ setMode("forgot"); setError(""); }} style={{ marginTop:10, width:"100%", padding:"6px", background:"none", border:"none", color:C.blueHi, fontSize:13, cursor:"pointer", textAlign:"center" }}>
+              ¿Olvidaste tu contraseña?
+            </button>
+          )}
+        </div>
+
+        <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:C.textSm }}>
+          🔒 Acceso controlado · Solo personal autorizado por el taller
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   USERS PAGE — Aprobación de cuentas
+═══════════════════════════════════════════════════ */
+function UsersPage({ session }) {
+  const [users,   setUsers]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast2,  setToast2]  = useState(null);
+
+  const showMsg = (msg, type="ok") => { setToast2({msg,type}); setTimeout(()=>setToast2(null),3000); };
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const tk = localStorage.getItem("tac_token") || SB_KEY;
+      const r  = await fetch(`${SB_URL}/rest/v1/pending_users?order=created_at.desc`, {
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}` }
+      });
+      const data = await r.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch(e) { setUsers([]); }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const updateStatus = async (id, status) => {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
+    await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status, role: status === "approved" ? "client" : undefined })
+    });
+    showMsg(status === "approved" ? "Usuario aprobado ✓" : "Usuario rechazado");
+    loadUsers();
+  };
+
+  const deleteUser = async (id) => {
+    const tk = localStorage.getItem("tac_token") || SB_KEY;
+    await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${tk}` }
+    });
+    showMsg("Usuario eliminado", "err");
+    loadUsers();
+  };
+
+  const STATUS_CFG = {
+    pending:  { label:"Pendiente",  color:C.amber,  bg:"#2D1A00" },
+    approved: { label:"Aprobado",   color:C.green,  bg:"#002D1A" },
+    rejected: { label:"Rechazado",  color:C.red,    bg:"#2D0000" },
+  };
+
+  const counts = {
+    pending:  users.filter(u=>u.status==="pending").length,
+    approved: users.filter(u=>u.status==="approved").length,
+    rejected: users.filter(u=>u.status==="rejected").length,
+  };
+
+  return (
+    <div>
+      <div style={{ fontWeight:800, fontSize:22, marginBottom:6 }}>🔐 Gestión de Usuarios</div>
+      <div style={{ color:C.textMd, fontSize:14, marginBottom:24 }}>Aprobá o rechazá las solicitudes de acceso al sistema.</div>
+
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
+        {[["pending","Pendientes",C.amber],["approved","Aprobados",C.green],["rejected","Rechazados",C.red]].map(([k,l,color])=>(
+          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
+            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
+            <div style={{ fontSize:26, fontWeight:800, color, marginTop:5 }}>{counts[k]}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading && <div style={{ color:C.textSm, textAlign:"center", padding:40 }}>Cargando usuarios…</div>}
+
+      {!loading && users.length === 0 && (
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:40, textAlign:"center", color:C.textSm }}>
+          No hay solicitudes de acceso aún.
+        </div>
+      )}
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {users.map(u => {
+          const sc = STATUS_CFG[u.status] || STATUS_CFG.pending;
+          return (
+            <div key={u.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px", display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
+              {/* Avatar */}
+              <div style={{ width:46, height:46, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:18, color:"#fff", flexShrink:0 }}>
+                {(u.name||"?").charAt(0).toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div style={{ flex:1, minWidth:160 }}>
+                <div style={{ fontWeight:700, fontSize:15 }}>{u.name || "Sin nombre"}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>✉️ {u.email}</div>
+                <div style={{ fontSize:12, color:C.textSm, marginTop:1 }}>📱 {u.phone || "Sin teléfono"}</div>
+                <div style={{ fontSize:11, color:C.textSm, marginTop:1 }}>
+                  {u.created_at ? `Solicitó el ${new Date(u.created_at).toLocaleDateString("es-CR")}` : ""}
+                </div>
+              </div>
+
+              {/* Status */}
+              <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+
+              {/* Actions */}
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                {u.status !== "approved" && (
+                  <button onClick={()=>updateStatus(u.id,"approved")} style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.green}44`, background:`${C.green}18`, color:C.green, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    ✅ Aprobar
+                  </button>
+                )}
+                {u.status !== "rejected" && (
+                  <button onClick={()=>updateStatus(u.id,"rejected")} style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.red}44`, background:`${C.red}18`, color:C.red, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    ❌ Rechazar
+                  </button>
+                )}
+                {u.status === "approved" && (
+                  <button onClick={()=>updateStatus(u.id,"pending")} style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.amber}44`, background:`${C.amber}18`, color:C.amber, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+                    ⏸ Suspender
+                  </button>
+                )}
+                <button onClick={()=>deleteUser(u.id)} style={{ padding:"8px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSm, fontSize:13, cursor:"pointer" }}>
+                  🗑
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Refresh button */}
+      <button onClick={loadUsers} style={{ marginTop:20, padding:"10px 20px", borderRadius:9, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, cursor:"pointer", fontSize:13 }}>
+        🔄 Actualizar lista
+      </button>
+
+      {/* Toast */}
+      {toast2 && (
+        <div style={{ position:"fixed", bottom:28, right:28, background:toast2.type==="ok"?C.green:C.red, color:"#fff", borderRadius:10, padding:"12px 20px", fontWeight:600, fontSize:14, zIndex:9999 }}>
+          {toast2.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   CLIENT PORTAL — Vista para clientes
+═══════════════════════════════════════════════════ */
+function ClientPortal({ session, onLogout }) {
+  const CP = {
+    bg:      "#F0F4FF",
+    card:    "#FFFFFF",
+    border:  "#E2E8F0",
+    text:    "#1E293B",
+    textMd:  "#475569",
+    textSm:  "#94A3B8",
+    blue:    "#2563EB",
+    blueHi:  "#3B82F6",
+    cyan:    "#0EA5E9",
+    green:   "#10B981",
+    amber:   "#F59E0B",
+    red:     "#EF4444",
+    purple:  "#8B5CF6",
+    navBg:   "#1E293B",
+  };
+
+  const [tab, setTab] = useState("home");
+  const [loading, setLoading] = useState(true);
+
+  // Data
+  const [myClient, setMyClient] = useState(null);
+  const [vehicles, setVehicles] = useState([]);
+  const [appts,    setAppts]    = useState([]);
+  const [orders,   setOrders]   = useState([]);
+  const [myQuotes, setMyQuotes] = useState([]);
+  const [myReports,setMyReports]= useState([]);
+  const [myInvoices,setMyInvoices]=useState([]);
+  const [workers,  setWorkers]  = useState([]);
+  const [services, setServices] = useState(SERVICES_CAT);
+
+  // Registration
+  const [regStep,    setRegStep]    = useState("client");
+  const [regForm,    setRegForm]    = useState({ name:"", phone:"", idNum:"", plate:"", brand:"", model:"", year:new Date().getFullYear(), color:"", fuel:"Gasolina", km:0 });
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError,   setRegError]   = useState("");
+
+  // Book appt
+  const [apptForm,    setApptForm]    = useState({ vehicleId:"", serviceId:"diag", customService:"", date:today(), hour:getHoursForDate(today())[0]||"", notes:"" });
+  const [apptDone,    setApptDone]    = useState(false);
+  const [apptLoading, setApptLoading] = useState(false);
+
+  // Quote
+  const [quoteType,    setQuoteType]    = useState("");
+  const [quoteFailure, setQuoteFailure] = useState("");
+  const [quoteVehicle, setQuoteVehicle] = useState("");
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteDone,    setQuoteDone]    = useState(false);
+
+  // Selected vehicle for home view
+  const [selectedVeh, setSelectedVeh] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const [cls,vhs,ords,apts,wks,svcs,qts,rpts,invs] = await Promise.all([
+          sb.get("clients"),sb.get("vehicles"),sb.get("orders"),sb.get("appointments"),
+          sb.get("workers"),sb.get("services"),sb.get("quotes"),sb.get("service_reports"),sb.get("invoices")
+        ]);
+        const allClients  = (cls||[]).map(TABLE.clients.fromDb);
+        const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
+        const allOrders   = (ords||[]).map(TABLE.orders.fromDb);
+        const allAppts    = (apts||[]).map(TABLE.appointments.fromDb);
+        const allWorkers  = (wks||[]).map(TABLE.workers.fromDb);
+        const allSvcs     = (svcs||[]).map(TABLE.services.fromDb);
+        const allQuotes   = (qts||[]).map(TABLE.quotes.fromDb);
+        const allReports  = (rpts||[]).map(TABLE.service_reports.fromDb);
+        const allInvs     = (invs||[]).map(TABLE.invoices.fromDb);
+        if (allSvcs.length) setServices(allSvcs);
+        const me = allClients.find(c=>c.email?.toLowerCase()===session.email?.toLowerCase()||c.name?.toLowerCase()===session.email?.toLowerCase());
+        setMyClient(me||null);
+        const myVehs = me ? allVehicles.filter(v=>v.clientId===me.id) : [];
+        setVehicles(myVehs);
+        setOrders(me ? allOrders.filter(o=>o.clientId===me.id) : []);
+        setAppts(me  ? allAppts.filter(a=>a.clientId===me.id)  : []);
+        setMyQuotes(me ? allQuotes.filter(q=>q.clientId===me.id) : []);
+        setMyReports(me ? allReports.filter(r=>r.clientId===me.id) : []);
+        setMyInvoices(me ? allInvs.filter(i=>i.clientId===me.id) : []);
+        setWorkers(allWorkers.filter(w=>w.status==="active"));
+        if (myVehs.length) {
+          setApptForm(f=>({...f, vehicleId:myVehs[0].id}));
+          setQuoteVehicle(myVehs[0].id);
+        }
+      } catch(e) { console.error(e); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const submitRegistration = async () => {
+    setRegError(""); setRegLoading(true);
+    try {
+      if (regStep==="client") {
+        if (!regForm.name.trim()||!regForm.phone.trim()) { setRegError("Nombre y teléfono son obligatorios."); setRegLoading(false); return; }
+        const nc = { id:uid(), name:regForm.name.trim(), phone:regForm.phone.trim(), email:session.email, idNum:regForm.idNum.trim(), notes:"" };
+        await sb.upsert("clients", TABLE.clients.toDb(nc));
+        setMyClient(nc); setRegStep("vehicle");
+      } else {
+        if (!regForm.plate.trim()||!regForm.brand.trim()) { setRegError("Placa y marca son obligatorias."); setRegLoading(false); return; }
+        const nv = { id:uid(), clientId:myClient.id, plate:regForm.plate.trim().toUpperCase(), brand:regForm.brand.trim(), model:regForm.model.trim(), year:regForm.year, color:regForm.color.trim(), fuel:regForm.fuel, km:regForm.km, vin:"", notes:"", photoUrl:"" };
+        await sb.upsert("vehicles", TABLE.vehicles.toDb(nv));
+        setVehicles([nv]); setApptForm(f=>({...f,vehicleId:nv.id})); setQuoteVehicle(nv.id);
+        setRegStep("done");
+      }
+    } catch(e) { setRegError("Error al guardar."); }
+    setRegLoading(false);
+  };
+
+  const bookAppointment = async () => {
+    if (!myClient||!apptForm.vehicleId||!apptForm.date) return;
+    setApptLoading(true);
+    const na = { id:uid(), clientId:myClient.id, vehicleId:apptForm.vehicleId, serviceId:apptForm.serviceId, customService:apptForm.serviceId==="__custom__"?(apptForm.customService||""):"", date:apptForm.date, hour:apptForm.hour, status:"pending", notes:`[Solicitud electrónica] ${apptForm.notes||""}`.trim(), mechanic:workers[0]?.name||"" };
+    await sb.upsert("appointments", TABLE.appointments.toDb(na));
+    setAppts(prev=>[...prev,na]); setApptDone(true); setApptLoading(false);
+    setTimeout(()=>setApptDone(false),4000);
+  };
+
+  const submitQuote = async () => {
+    if (!myClient||!quoteType||!quoteFailure.trim()) return;
+    setQuoteLoading(true);
+    const nq = { id:uid(), clientId:myClient.id, vehicleId:quoteVehicle||null, quoteType, possibleFailure:quoteFailure.trim(), possibleRepair:"", description:"", status:"pending", services:[], total:0, notes:"", createdAt:new Date().toISOString() };
+    await sb.upsert("quotes", TABLE.quotes.toDb(nq));
+    setMyQuotes(prev=>[...prev,nq]); setQuoteType(""); setQuoteFailure(""); setQuoteDone(true); setQuoteLoading(false);
+    setTimeout(()=>setQuoteDone(false),4000);
+  };
+
+  if (loading) return (
+    <div style={{ minHeight:"100vh", background:CP.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif" }}>
+      <div style={{ textAlign:"center", color:CP.textMd }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>🔧</div>
+        <div>Cargando tu portal…</div>
+      </div>
+    </div>
+  );
+
+  const ISC = () => ({ background:"#F8FAFC", border:`1px solid ${CP.border}`, borderRadius:10, color:CP.text, padding:"11px 14px", fontSize:14, width:"100%", outline:"none" });
+
+  const upcomingAppts = appts.filter(a=>a.date>=today()&&a.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date)||a.hour.localeCompare(b.hour));
+  const currentVehicle = vehicles[selectedVeh];
+  const vehicleReports = myReports.filter(r=>r.vehicleId===currentVehicle?.id);
+  const mechRec = vehicleReports[0]?.observations;
+
+  const STATUS_AP = { pending:{label:"Pendiente",color:CP.amber,bg:"#FEF3C7"}, confirmed:{label:"Confirmada",color:CP.green,bg:"#D1FAE5"}, cancelled:{label:"Cancelada",color:CP.red,bg:"#FEE2E2"}, done:{label:"Completada",color:CP.purple,bg:"#EDE9FE"} };
+  const STATUS_OR = { active:{label:"En proceso",color:CP.amber,bg:"#FEF3C7"}, completed:{label:"Completada",color:CP.green,bg:"#D1FAE5"}, cancelled:{label:"Cancelada",color:CP.red,bg:"#FEE2E2"} };
+  const STATUS_QU = { pending:{label:"Solicitada",color:CP.amber}, quoted:{label:"Cotizada",color:CP.blue}, sent:{label:"Enviada",color:CP.green}, closed:{label:"Cerrada",color:CP.purple} };
+
+  const navItems = [
+    { id:"home",    icon:"🏠", label:"Inicio" },
+    { id:"book",    icon:"📅", label:"Cita" },
+    { id:"quote",   icon:"💬", label:"Cotizar" },
+    { id:"orders",  icon:"📋", label:"Órdenes" },
+    { id:"history", icon:"📄", label:"Historial" },
+    { id:"invoice", icon:"🧾", label:"Factura" },
+  ];
+
+  return (
+    <div style={{ minHeight:"100vh", background:CP.bg, fontFamily:"'Inter',system-ui,sans-serif", color:CP.text, paddingBottom:72 }}>
+      {/* TOP HEADER */}
+      <div style={{ background:"linear-gradient(135deg,#1E3A5F,#2563EB)", padding:"16px 20px 20px", color:"#fff" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:36, height:36, background:"rgba(255,255,255,.2)", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🔧</div>
+            <div>
+              <div style={{ fontWeight:800, fontSize:15 }}>Tecno AutoAsisten CR</div>
+              <div style={{ fontSize:11, opacity:.8 }}>Portal del Cliente</div>
+            </div>
+          </div>
+          <button onClick={onLogout} style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>Salir</button>
+        </div>
+
+        {/* Greeting */}
+        <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>
+          Hola, {myClient?.name?.split(" ")[0] || session.email.split("@")[0]} 👋
+        </div>
+        <div style={{ fontSize:13, opacity:.8 }}>
+          {upcomingAppts.length>0 ? `Tenés ${upcomingAppts.length} cita${upcomingAppts.length>1?"s":""} próxima${upcomingAppts.length>1?"s":""}` : "Sin citas próximas"}
+        </div>
+      </div>
+
+      {/* CONTENT */}
+      <div style={{ padding:"0 16px", marginTop:-8 }}>
+
+        {/* REGISTRATION — if no client profile */}
+        {!myClient && regStep!=="done" && (
+          <div style={{ background:CP.card, borderRadius:16, padding:"20px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:4, color:CP.text }}>
+              {regStep==="client" ? "👤 Completá tu perfil" : "🚗 Agregá tu vehículo"}
+            </div>
+            <div style={{ fontSize:13, color:CP.textMd, marginBottom:16 }}>
+              {regStep==="client" ? "Necesitamos tus datos para agendar citas." : "Registrá tu vehículo para empezar. (Opcional)"}
+            </div>
+            {regStep==="client" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div style={{ gridColumn:"span 2" }}>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Nombre completo *</label>
+                  <input value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} style={ISC()} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Teléfono *</label>
+                  <input value={regForm.phone} onChange={e=>setRegForm(f=>({...f,phone:e.target.value}))} style={ISC()} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Cédula</label>
+                  <input value={regForm.idNum} onChange={e=>setRegForm(f=>({...f,idNum:e.target.value}))} style={ISC()} />
+                </div>
+              </div>
+            )}
+            {regStep==="vehicle" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Placa *</label>
+                  <input value={regForm.plate} onChange={e=>setRegForm(f=>({...f,plate:e.target.value.toUpperCase()}))} style={ISC()} placeholder="ABC-123" />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Marca *</label>
+                  <input value={regForm.brand} onChange={e=>setRegForm(f=>({...f,brand:e.target.value}))} style={ISC()} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Modelo</label>
+                  <input value={regForm.model} onChange={e=>setRegForm(f=>({...f,model:e.target.value}))} style={ISC()} />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Año</label>
+                  <input type="number" value={regForm.year} onChange={e=>setRegForm(f=>({...f,year:+e.target.value}))} style={ISC()} />
+                </div>
+              </div>
+            )}
+            {regError && <div style={{ color:CP.red, fontSize:13, marginTop:10 }}>❌ {regError}</div>}
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={submitRegistration} disabled={regLoading} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
+                {regLoading?"Guardando…":regStep==="client"?"Continuar →":"Guardar vehículo →"}
+              </button>
+              {regStep==="vehicle" && <button onClick={()=>setRegStep("done")} style={{ padding:"12px 16px", borderRadius:10, border:`1px solid ${CP.border}`, background:"transparent", color:CP.textMd, fontSize:14, cursor:"pointer" }}>Omitir</button>}
+            </div>
+          </div>
+        )}
+
+        {/* HOME TAB */}
+        {tab==="home" && (
+          <div>
+            {/* Vehicle card */}
+            {vehicles.length>0 && (
+              <div style={{ background:CP.card, borderRadius:16, overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16 }}>
+                {/* Vehicle selector if multiple */}
+                {vehicles.length>1 && (
+                  <div style={{ display:"flex", gap:8, padding:"12px 16px 0", overflowX:"auto" }}>
+                    {vehicles.map((v,i)=>(
+                      <button key={v.id} onClick={()=>setSelectedVeh(i)} style={{ padding:"6px 14px", borderRadius:20, border:`1px solid ${selectedVeh===i?CP.blue:CP.border}`, background:selectedVeh===i?`${CP.blue}11`:"transparent", color:selectedVeh===i?CP.blue:CP.textMd, cursor:"pointer", fontSize:12, fontWeight:selectedVeh===i?700:400, whiteSpace:"nowrap" }}>
+                        {v.plate}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Vehicle photo */}
+                {currentVehicle?.photoUrl ? (
+                  <div style={{ height:180, overflow:"hidden", position:"relative" }}>
+                    <img src={currentVehicle.photoUrl} alt={currentVehicle.plate} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(0,0,0,.7))", padding:"20px 16px 12px" }}>
+                      <div style={{ fontWeight:800, fontSize:18, color:"#fff" }}>{currentVehicle.year} {currentVehicle.brand} {currentVehicle.model}</div>
+                      <div style={{ fontSize:13, color:"rgba(255,255,255,.8)" }}>{currentVehicle.plate} · {currentVehicle.color} · {currentVehicle.fuel}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background:`linear-gradient(135deg,#1E3A5F,#2563EB)`, padding:"20px 16px", display:"flex", alignItems:"center", gap:14 }}>
+                    <div style={{ width:56, height:56, background:"rgba(255,255,255,.15)", borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🚗</div>
+                    <div>
+                      <div style={{ fontWeight:800, fontSize:18, color:"#fff" }}>{currentVehicle?.year} {currentVehicle?.brand} {currentVehicle?.model}</div>
+                      <div style={{ fontSize:13, color:"rgba(255,255,255,.8)" }}>{currentVehicle?.plate} · {currentVehicle?.color} · {currentVehicle?.fuel}</div>
+                    </div>
+                  </div>
+                )}
+                {/* Vehicle stats */}
+                <div style={{ padding:"14px 16px" }}>
+                  <div style={{ display:"flex", gap:16, marginBottom:currentVehicle?.km?12:0 }}>
+                    {currentVehicle?.km>0 && <div><div style={{ fontSize:10, color:CP.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Kilometraje</div><div style={{ fontWeight:700, fontSize:15, color:CP.text }}>{Number(currentVehicle.km).toLocaleString()} km</div></div>}
+                    <div><div style={{ fontSize:10, color:CP.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Órdenes</div><div style={{ fontWeight:700, fontSize:15, color:CP.text }}>{orders.filter(o=>o.vehicleId===currentVehicle?.id).length}</div></div>
+                    <div><div style={{ fontSize:10, color:CP.textSm, textTransform:"uppercase", letterSpacing:.7 }}>Informes</div><div style={{ fontWeight:700, fontSize:15, color:CP.text }}>{vehicleReports.length}</div></div>
+                  </div>
+                  {/* Mechanic recommendation */}
+                  {mechRec && (
+                    <div style={{ background:"#FFF7ED", border:`1px solid ${CP.amber}44`, borderRadius:10, padding:"10px 12px", marginTop:4 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:CP.amber, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>💡 Recomendación del mecánico</div>
+                      <div style={{ fontSize:13, color:"#92400E" }}>{mechRec}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* No vehicle */}
+            {vehicles.length===0 && myClient && (
+              <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16, textAlign:"center" }}>
+                <div style={{ fontSize:40, marginBottom:8 }}>🚗</div>
+                <div style={{ fontWeight:600, color:CP.text, marginBottom:4 }}>Sin vehículos registrados</div>
+                <div style={{ fontSize:13, color:CP.textMd }}>El taller registrará tu vehículo en tu próxima visita.</div>
+              </div>
+            )}
+
+            {/* Upcoming appointments */}
+            <div style={{ background:CP.card, borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div style={{ fontWeight:700, fontSize:16 }}>📅 Próximas citas</div>
+                <button onClick={()=>setTab("book")} style={{ fontSize:12, color:CP.blue, background:"none", border:"none", cursor:"pointer", fontWeight:600 }}>+ Agendar</button>
+              </div>
+              {upcomingAppts.length===0 ? (
+                <div style={{ textAlign:"center", padding:"16px 0", color:CP.textSm, fontSize:13 }}>
+                  Sin citas próximas ·{" "}
+                  <span onClick={()=>setTab("book")} style={{ color:CP.blue, cursor:"pointer", fontWeight:600 }}>Agendar una</span>
+                </div>
+              ) : upcomingAppts.slice(0,3).map(a=>{
+                const svc = a.serviceId==="__custom__"?(a.customService||"Servicio personalizado"):(services.find(s=>s.id===a.serviceId)?.name||a.serviceId);
+                const sc  = STATUS_AP[a.status]||STATUS_AP.pending;
+                return (
+                  <div key={a.id} style={{ display:"flex", gap:12, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${CP.border}` }}>
+                    <div style={{ background:`linear-gradient(135deg,${CP.blue},${CP.cyan})`, borderRadius:10, padding:"8px 10px", textAlign:"center", minWidth:52, flexShrink:0 }}>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,.8)" }}>{a.date.slice(5).replace("-","/")}</div>
+                      <div style={{ fontWeight:800, color:"#fff", fontSize:14 }}>{a.hour}</div>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:600, fontSize:14 }}>{svc}</div>
+                      <div style={{ fontSize:12, color:CP.textMd }}>{a.mechanic||"Por asignar"}</div>
+                    </div>
+                    <span style={{ background:sc.bg, color:sc.color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{sc.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Active orders */}
+            {orders.filter(o=>o.status==="active").length>0 && (
+              <div style={{ background:CP.card, borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,.08)", marginBottom:16 }}>
+                <div style={{ fontWeight:700, fontSize:16, marginBottom:14 }}>🔧 En proceso</div>
+                {orders.filter(o=>o.status==="active").map(o=>(
+                  <div key={o.id} style={{ padding:"10px 0", borderBottom:`1px solid ${CP.border}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between" }}>
+                      <div style={{ fontWeight:600, fontSize:14 }}>{o.services.map(sid=>services.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")||"Servicio"}</div>
+                      <span style={{ background:"#FEF3C7", color:CP.amber, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>En proceso</span>
+                    </div>
+                    <div style={{ fontSize:12, color:CP.textMd, marginTop:2 }}>{o.mechanic} · {fmtDate(o.date)}</div>
+                    {o.mechanicNotes && <div style={{ fontSize:12, color:CP.blue, marginTop:4, background:"#EFF6FF", borderRadius:6, padding:"6px 10px" }}>🔧 {o.mechanicNotes}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+              {[
+                { icon:"📅", label:"Agendar cita", tab:"book", color:CP.blue },
+                { icon:"💬", label:"Solicitar cotización", tab:"quote", color:CP.purple },
+                { icon:"📋", label:"Mis órdenes", tab:"orders", color:CP.green },
+                { icon:"📄", label:"Historial", tab:"history", color:CP.amber },
+              ].map(a=>(
+                <button key={a.tab} onClick={()=>setTab(a.tab)} style={{ background:CP.card, border:`1px solid ${CP.border}`, borderRadius:14, padding:"16px 14px", textAlign:"left", cursor:"pointer", boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
+                  <div style={{ fontSize:24, marginBottom:6 }}>{a.icon}</div>
+                  <div style={{ fontWeight:600, fontSize:13, color:CP.text }}>{a.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* BOOK APPOINTMENT */}
+        {tab==="book" && (
+          <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
+            <div style={{ fontWeight:700, fontSize:18, marginBottom:4, color:CP.text }}>📅 Agendar cita</div>
+            <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Horario: {SCHEDULE_LABEL}</div>
+            {apptDone && <div style={{ background:"#D1FAE5", border:`1px solid ${CP.green}`, borderRadius:10, padding:"12px 16px", marginBottom:16, color:"#065F46", fontWeight:600 }}>✅ ¡Cita agendada! El taller confirmará pronto.</div>}
+            {!myClient ? <div style={{ color:CP.amber, fontSize:14 }}>⬆️ Completá tu perfil primero.</div> : vehicles.length===0 ? <div style={{ color:CP.textMd, fontSize:14 }}>El taller registrará tu vehículo en tu primera visita.</div> : (
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Vehículo</label>
+                  <select value={apptForm.vehicleId} onChange={e=>setApptForm(f=>({...f,vehicleId:e.target.value}))} style={ISC()}>
+                    {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Servicio</label>
+                  <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={ISC()}>
+                    {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                    <option value="__custom__">✏️ Escribir manualmente…</option>
+                  </select>
+                </div>
+                {apptForm.serviceId==="__custom__" && (
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Describí el servicio</label>
+                    <input value={apptForm.customService||""} onChange={e=>setApptForm(f=>({...f,customService:e.target.value}))} placeholder="Ej: Cambio de correa de distribución…" style={ISC()} />
+                  </div>
+                )}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Fecha</label>
+                    <input type="date" value={apptForm.date} min={today()} onChange={e=>{ const nd=e.target.value; const vh=getHoursForDate(nd); setApptForm(f=>({...f,date:nd,hour:vh[0]||""})); }} style={ISC()} />
+                    {apptForm.date && !isWorkingDay(apptForm.date) && <div style={{ fontSize:11, color:CP.red, marginTop:4 }}>⚠️ Cerrado los domingos.</div>}
+                  </div>
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Hora</label>
+                    <select value={apptForm.hour} onChange={e=>setApptForm(f=>({...f,hour:e.target.value}))} style={ISC()} disabled={!isWorkingDay(apptForm.date)}>
+                      {getHoursForDate(apptForm.date).length===0 ? <option>No disponible</option> : getHoursForDate(apptForm.date).map(h=><option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Notas (opcional)</label>
+                  <textarea value={apptForm.notes} onChange={e=>setApptForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Describí el problema o lo que necesitás revisar…" style={{...ISC(),resize:"vertical"}} />
+                </div>
+                <button onClick={bookAppointment} disabled={apptLoading||!isWorkingDay(apptForm.date)||!apptForm.hour} style={{ padding:"14px", borderRadius:12, border:"none", background:(apptLoading||!isWorkingDay(apptForm.date)||!apptForm.hour)?"#CBD5E1":`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
+                  {apptLoading?"Agendando…":"📅 Confirmar cita"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* QUOTE */}
+        {tab==="quote" && (
+          <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
+            <div style={{ fontWeight:700, fontSize:18, marginBottom:4 }}>💬 Solicitar cotización</div>
+            <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Describí lo que necesitás y te enviamos el precio por WhatsApp.</div>
+            {quoteDone ? (
+              <div style={{ background:"#D1FAE5", borderRadius:12, padding:"20px", textAlign:"center" }}>
+                <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
+                <div style={{ fontWeight:700, color:"#065F46" }}>¡Solicitud enviada! Te contactamos pronto.</div>
+              </div>
+            ) : !myClient ? <div style={{ color:CP.amber, fontSize:14 }}>⬆️ Completá tu perfil primero.</div> : (
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                {vehicles.length>0 && (
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Vehículo (opcional)</label>
+                    <select value={quoteVehicle} onChange={e=>setQuoteVehicle(e.target.value)} style={ISC()}>
+                      <option value="">Sin especificar</option>
+                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:8 }}>Tipo de servicio *</label>
+                  <div style={{ display:"flex", gap:10 }}>
+                    {[["diagnosis","🔍 Diagnóstico","Identificar el problema"],["repair","🔧 Reparación","Arreglar un problema conocido"],["warranty","🛡️ Garantía","Revisión bajo garantía"]].map(([v,l,d])=>(
+                      <button key={v} onClick={()=>setQuoteType(v)} style={{ flex:1, textAlign:"left", padding:"12px 10px", borderRadius:10, border:`1px solid ${quoteType===v?CP.blue:CP.border}`, background:quoteType===v?`${CP.blue}11`:"transparent", cursor:"pointer" }}>
+                        <div style={{ fontWeight:700, fontSize:12, color:quoteType===v?CP.blue:CP.text }}>{l}</div>
+                        <div style={{ fontSize:10, color:CP.textSm, marginTop:2 }}>{d}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Describí el problema *</label>
+                  <textarea value={quoteFailure} onChange={e=>setQuoteFailure(e.target.value)} rows={4} placeholder="Ej: El carro hace un ruido al frenar, la luz de check está encendida…" style={{...ISC(),resize:"vertical"}} />
+                </div>
+                <button onClick={submitQuote} disabled={quoteLoading||!quoteType||!quoteFailure.trim()} style={{ padding:"14px", borderRadius:12, border:"none", background:(quoteLoading||!quoteType||!quoteFailure.trim())?"#CBD5E1":`linear-gradient(135deg,${CP.purple},${CP.blue})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
+                  {quoteLoading?"Enviando…":"💬 Solicitar cotización"}
+                </button>
+
+                {/* Quote history */}
+                {myQuotes.length>0 && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>Mis cotizaciones</div>
+                    {myQuotes.map(q=>{
+                      const sc=STATUS_QU[q.status]||STATUS_QU.pending;
+                      return (
+                        <div key={q.id} style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 14px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontWeight:600, fontSize:13 }}>{q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</div>
+                            <div style={{ fontSize:12, color:CP.textMd, marginTop:2 }}>{q.possibleFailure?.slice(0,50)}{q.possibleFailure?.length>50?"…":""}</div>
+                            {q.total>0 && <div style={{ fontWeight:700, color:CP.green, marginTop:4 }}>{fmtCRC(q.total)}</div>}
+                          </div>
+                          <span style={{ background:`${sc.color}22`, color:sc.color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{sc.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ORDERS */}
+        {tab==="orders" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:18, marginBottom:16 }}>📋 Mis órdenes</div>
+            {orders.length===0 && <div style={{ background:CP.card, borderRadius:16, padding:"30px", textAlign:"center", color:CP.textSm, boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>Sin órdenes registradas</div>}
+            {[...orders].sort((a,b)=>b.date.localeCompare(a.date)).map(o=>{
+              const sc=STATUS_OR[o.status]||STATUS_OR.active;
+              return (
+                <div key={o.id} style={{ background:CP.card, borderRadius:16, padding:"16px", marginBottom:12, boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                    <div style={{ fontWeight:700, fontSize:15 }}>{fmtDate(o.date)}</div>
+                    <span style={{ background:sc.bg, color:sc.color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{sc.label}</span>
+                  </div>
+                  <div style={{ fontSize:13, color:CP.textMd }}>{o.services.map(sid=>services.find(s=>s.id===sid)?.name).filter(Boolean).join(", ")||"Servicio"}</div>
+                  <div style={{ fontSize:12, color:CP.textSm, marginTop:2 }}>{o.mechanic}</div>
+                  {o.mechanicNotes && <div style={{ fontSize:12, color:CP.blue, marginTop:8, background:"#EFF6FF", borderRadius:8, padding:"8px 10px" }}>🔧 {o.mechanicNotes}</div>}
+                  {o.total>0 && <div style={{ fontWeight:800, fontSize:17, color:CP.green, marginTop:10 }}>{fmtCRC(o.total)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* HISTORY */}
+        {tab==="history" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:18, marginBottom:16 }}>📄 Historial de servicios</div>
+            {myReports.length===0 && <div style={{ background:CP.card, borderRadius:16, padding:"30px", textAlign:"center", color:CP.textSm, boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>Sin informes de servicio aún</div>}
+            {[...myReports].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(r=>{
+              const v=vehicles.find(x=>x.id===r.vehicleId);
+              const o=orders.find(x=>x.id===r.orderId);
+              return (
+                <div key={r.id} style={{ background:CP.card, borderRadius:16, padding:"18px", marginBottom:12, boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
+                  <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>📋 Informe de servicio</div>
+                  <div style={{ fontSize:12, color:CP.textSm, marginBottom:12 }}>{v&&`${v.plate} · ${v.brand} ${v.model}`} · {fmtDate(o?.date||r.createdAt?.slice(0,10))} · {r.mechanic}{r.kmAtService>0?` · ${Number(r.kmAtService).toLocaleString()} km`:""}</div>
+                  {o?.services?.length>0 && (
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+                      {o.services.map(sid=>{ const s=services.find(x=>x.id===sid); return s?<span key={sid} style={{ background:"#D1FAE5", color:"#065F46", borderRadius:6, padding:"3px 10px", fontSize:12, fontWeight:600 }}>✅ {s.name}</span>:null; })}
+                    </div>
+                  )}
+                  <div style={{ fontSize:13, color:CP.text, marginBottom:r.observations?10:0, lineHeight:1.6 }}>{r.worksDone}</div>
+                  {r.observations && <div style={{ background:"#FFF7ED", border:`1px solid ${CP.amber}44`, borderRadius:10, padding:"10px 12px", fontSize:13, color:"#92400E" }}>💡 {r.observations}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* INVOICE */}
+        {tab==="invoice" && (
+          <div style={{ background:CP.card, borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,.08)" }}>
+            <div style={{ fontWeight:700, fontSize:18, marginBottom:4 }}>🧾 Factura electrónica</div>
+            <div style={{ fontSize:13, color:CP.textMd, marginBottom:20 }}>Llenás tus datos fiscales y te enviamos la factura.</div>
+            {(() => {
+              const [invForm, setInvForm] = useState({ legalName:"", idNum:"", address:"", email:session.email||"", phone:myClient?.phone||"", orderId:"", notes:"" });
+              const [invDone, setInvDone] = useState(false);
+              const [invLoad, setInvLoad] = useState(false);
+              const setI = (k,v) => setInvForm(p=>({...p,[k]:v}));
+              const submit = async () => {
+                if (!invForm.legalName.trim()||!invForm.idNum.trim()) return;
+                setInvLoad(true);
+                const ni = { id:uid(), clientId:myClient?.id||"", orderId:invForm.orderId||null, legalName:invForm.legalName.trim(), idNum:invForm.idNum.trim(), address:invForm.address.trim(), email:invForm.email.trim(), phone:invForm.phone.trim(), status:"pending", notes:invForm.notes.trim(), createdAt:new Date().toISOString() };
+                await sb.upsert("invoices", TABLE.invoices.toDb(ni));
+                setInvDone(true); setInvLoad(false);
+              };
+              return invDone ? (
+                <div style={{ textAlign:"center", padding:"20px 0" }}>
+                  <div style={{ fontSize:48, marginBottom:10 }}>✅</div>
+                  <div style={{ fontWeight:700, color:CP.green, fontSize:16 }}>¡Solicitud enviada!</div>
+                  <div style={{ color:CP.textMd, fontSize:13, marginTop:6 }}>Te enviamos la factura al correo indicado.</div>
+                </div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Nombre legal / Razón social *</label>
+                    <input value={invForm.legalName} onChange={e=>setI("legalName",e.target.value)} style={ISC()} />
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                    <div>
+                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Cédula / RUC *</label>
+                      <input value={invForm.idNum} onChange={e=>setI("idNum",e.target.value)} style={ISC()} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Teléfono</label>
+                      <input value={invForm.phone} onChange={e=>setI("phone",e.target.value)} style={ISC()} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Correo para envío *</label>
+                    <input value={invForm.email} onChange={e=>setI("email",e.target.value)} style={ISC()} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Dirección fiscal</label>
+                    <input value={invForm.address} onChange={e=>setI("address",e.target.value)} style={ISC()} />
+                  </div>
+                  {orders.length>0 && (
+                    <div>
+                      <label style={{ fontSize:12, fontWeight:600, color:CP.textMd, display:"block", marginBottom:4 }}>Orden asociada (opcional)</label>
+                      <select value={invForm.orderId} onChange={e=>setI("orderId",e.target.value)} style={ISC()}>
+                        <option value="">— Seleccionar —</option>
+                        {orders.map(o=><option key={o.id} value={o.id}>{fmtDate(o.date)} · {fmtCRC(o.total)}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <button onClick={submit} disabled={invLoad||!invForm.legalName.trim()||!invForm.idNum.trim()} style={{ padding:"14px", borderRadius:12, border:"none", background:(invLoad||!invForm.legalName.trim()||!invForm.idNum.trim())?"#CBD5E1":`linear-gradient(135deg,${CP.blue},${CP.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
+                    {invLoad?"Enviando…":"🧾 Solicitar factura"}
+                  </button>
+
+                  {/* Invoice history */}
+                  {myInvoices.length>0 && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ fontWeight:700, fontSize:15, marginBottom:10 }}>Mis facturas</div>
+                      {myInvoices.map(inv=>(
+                        <div key={inv.id} style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 14px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontWeight:600, fontSize:13 }}>{inv.legalName}</div>
+                            <div style={{ fontSize:12, color:CP.textSm }}>{fmtDate(inv.createdAt?.slice(0,10))}</div>
+                          </div>
+                          <span style={{ background: inv.status==="sent"?"#D1FAE5":"#FEF3C7", color:inv.status==="sent"?CP.green:CP.amber, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>
+                            {inv.status==="sent"?"Enviada":"Pendiente"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+      </div>
+
+      {/* BOTTOM NAV */}
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, background:CP.navBg, borderTop:`1px solid rgba(255,255,255,.1)`, display:"flex", zIndex:100, paddingBottom:"env(safe-area-inset-bottom,0px)" }}>
+        {navItems.map(n=>(
+          <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1, padding:"10px 4px 8px", border:"none", background:"transparent", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+            <span style={{ fontSize:20 }}>{n.icon}</span>
+            <span style={{ fontSize:10, fontWeight:tab===n.id?700:400, color:tab===n.id?"#60A5FA":"rgba(255,255,255,.5)" }}>{n.label}</span>
+            {tab===n.id && <div style={{ width:4, height:4, borderRadius:"50%", background:"#60A5FA", marginTop:1 }} />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordPage({ token, onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+  const [done,     setDone]     = useState(false);
+
+  const handleSubmit = async () => {
+    setError("");
+    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    if (password !== confirm) { setError("Las contraseñas no coinciden."); return; }
+    setLoading(true);
+    try {
+      const res = await auth.updatePassword(token, password);
+      if (res.error) { setError(res.error.message || "Error al actualizar la contraseña."); }
+      else { setDone(true); }
+    } catch(e) {
+      setError("Error de conexión. Intentá de nuevo.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',system-ui,sans-serif", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ width:60, height:60, background:`linear-gradient(135deg,${C.blue},${C.cyan})`, borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🔑</div>
+          <div style={{ fontWeight:800, fontSize:22, color:C.text }}>Crear nueva contraseña</div>
+        </div>
+
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 28px" }}>
+          {done ? (
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontSize:48, marginBottom:14 }}>✅</div>
+              <div style={{ color:C.green, fontWeight:700, fontSize:16, marginBottom:10 }}>¡Contraseña actualizada!</div>
+              <div style={{ color:C.textMd, fontSize:14, marginBottom:20 }}>Ya podés iniciar sesión con tu nueva contraseña.</div>
+              <button onClick={onDone} style={{ width:"100%", padding:"12px", borderRadius:10, border:"none", background:C.blue, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>
+                Ir a iniciar sesión
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Nueva contraseña</label>
+                  <PasswordField value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                </div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:5 }}>Confirmar contraseña</label>
+                  <PasswordField value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()} placeholder="Repetí la contraseña" />
+                </div>
+              </div>
+              {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
+              <button onClick={handleSubmit} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                {loading ? <><Spinner />Guardando…</> : "Guardar nueva contraseña →"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   SERVICE REPORT MODAL — Informe de servicio
+═══════════════════════════════════════════════════ */
+function ServiceReportModal({ order, data, existing, onSave, onClose }) {
+  const client  = data.clients.find(c=>c.id===order.clientId);
+  const vehicle = data.vehicles.find(v=>v.id===order.vehicleId);
+  const [f, setF] = useState(existing || {
+    id: uid(), orderId: order.id, clientId: order.clientId, vehicleId: order.vehicleId,
+    mechanic: order.mechanic||"", worksDone: "", observations: "",
+    kmAtService: vehicle?.km||0, createdAt: new Date().toISOString()
+  });
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+
+  return (
+    <Modal title="📋 Informe de servicio" onClose={onClose} wide>
+      {/* Header info */}
+      <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Cliente</div>
+          <div style={{ fontWeight:700 }}>{client?.name||"—"}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Vehículo</div>
+          <div style={{ fontWeight:700 }}>{vehicle?.plate} — {vehicle?.year} {vehicle?.brand} {vehicle?.model}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Fecha</div>
+          <div>{fmtDate(order.date)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Mecánico</div>
+          <div>{order.mechanic||"—"}</div>
+        </div>
+      </div>
+
+      {/* Servicios realizados */}
+      <div style={{ marginBottom:14 }}>
+        <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:6 }}>Servicios realizados</div>
+        <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px", fontSize:13 }}>
+          {order.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).map((n,i)=>(
+            <div key={i} style={{ padding:"3px 0", borderBottom:`1px solid ${C.border}` }}>✅ {n}</div>
+          ))}
+          {order.parts?.length>0 && order.parts.map((p,i)=>(
+            <div key={`p${i}`} style={{ padding:"3px 0", borderBottom:`1px solid ${C.border}`, color:C.textSm }}>🔩 {p.name} × {p.qty}</div>
+          ))}
+        </div>
+      </div>
+
+      <Field label="Trabajos realizados *">
+        <textarea value={f.worksDone} onChange={e=>set("worksDone",e.target.value)} rows={4} placeholder="Ej: Se realizó cambio de aceite y filtro. Se inspeccionaron frenos delanteros y traseros encontrándose en buen estado…" style={{...IS(),resize:"vertical"}} />
+      </Field>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Observaciones / Recomendaciones">
+          <textarea value={f.observations} onChange={e=>set("observations",e.target.value)} rows={3} placeholder="Ej: Se recomienda revisión de llantas en próxima visita. Nivel de refrigerante bajo, se recomendó al cliente…" style={{...IS(),resize:"vertical"}} />
+        </Field>
+      </div>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Kilometraje al momento del servicio">
+          <input type="number" value={f.kmAtService} onChange={e=>set("kmAtService",+e.target.value)} style={IS()} placeholder="Ej: 87500" />
+        </Field>
+      </div>
+
+      <div style={{ background:`${C.green}11`, border:`1px solid ${C.green}33`, borderRadius:8, padding:"10px 14px", marginTop:14, fontSize:12, color:C.green }}>
+        📱 Este informe quedará visible para el cliente en su historial de vehículo dentro de la app.
+      </div>
+
+      <ModalActions onSave={()=>{ if(f.worksDone.trim()) onSave(f); }} onClose={onClose} />
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   AI ASSISTANT PAGE — Asistente con acceso a datos reales
+═══════════════════════════════════════════════════ */
+function AIAssistantPage({ data, save, toast }) {
+  const [history, setHistory] = useState([
+    { role:"assistant", content:"¡Hola! Soy el asistente de Tecno AutoAsisten CR. Tengo acceso completo a los datos del taller. Puedo responder preguntas como:\n\n• ¿Cuántas citas tengo hoy?\n• ¿Qué órdenes están activas?\n• ¿Cuánto ingresé este mes?\n• ¿Quién es el cliente con más órdenes?\n\nTambién puedo ayudarte a actualizar estados de órdenes y citas. ¿En qué te ayudo?" }
+  ]);
+  const [question, setQuestion] = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const endRef = useRef(null);
+
+  const buildContext = () => {
+    const today = new Date().toISOString().slice(0,10);
+    const thisMonth = new Date().toISOString().slice(0,7);
+    const todayAppts = (data.appointments||[]).filter(a=>a.date===today);
+    const activeOrders = (data.orders||[]).filter(o=>o.status==="active");
+    const monthIncome = (data.orders||[]).filter(o=>o.status==="completed" && o.date?.startsWith(thisMonth)).reduce((s,o)=>s+o.total,0);
+    const pendingAppts = (data.appointments||[]).filter(a=>a.status==="pending");
+
+    return `Eres el asistente administrativo de Tecno AutoAsisten CR, un taller mecánico en Costa Rica.
+Hoy es ${today}. Moneda: Colones (₡).
+
+DATOS ACTUALES DEL TALLER:
+- Clientes: ${data.clients?.length||0}
+- Vehículos: ${data.vehicles?.length||0}
+- Citas HOY (${today}): ${todayAppts.length} → ${todayAppts.map(a=>{const c=data.clients?.find(x=>x.id===a.clientId);return `${c?.name||"?"} a las ${a.hour} (${a.status})`;}).join(", ")||"Ninguna"}
+- Citas pendientes de confirmar: ${pendingAppts.length}
+- Órdenes activas: ${activeOrders.length} → ${activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return `${c?.name||"?"} (₡${o.total})`;}).join(", ")||"Ninguna"}
+- Ingresos del mes (${thisMonth}): ₡${monthIncome.toLocaleString("es-CR")}
+- Trabajadores activos: ${(data.workers||[]).filter(w=>w.status==="active").map(w=>w.name).join(", ")||"Ninguno"}
+- Inventario con stock bajo: ${(data.inventory||[]).filter(i=>i.qty<=i.minQty).map(i=>i.name).join(", ")||"Ninguno"}
+
+LISTA DE CITAS (próximas 7 días):
+${(data.appointments||[]).filter(a=>a.date>=today).slice(0,10).map(a=>{
+  const c=data.clients?.find(x=>x.id===a.clientId);
+  const v=data.vehicles?.find(x=>x.id===a.vehicleId);
+  return `ID:${a.id} | ${a.date} ${a.hour} | ${c?.name||"?"} | ${v?.plate||"?"} | ${a.status}`;
+}).join("\n")||"Ninguna"}
+
+ÓRDENES ACTIVAS:
+${activeOrders.map(o=>{const c=data.clients?.find(x=>x.id===o.clientId);return `ID:${o.id} | ${c?.name||"?"} | ₡${o.total} | ${o.mechanic}`;}).join("\n")||"Ninguna"}
+
+Responde en español de Costa Rica. Sé conciso y práctico. Si el usuario pide actualizar algo, incluye al final del mensaje una línea con formato JSON así:
+ACTION: {"type":"update_appointment","id":"xxx","status":"confirmed"}
+o: ACTION: {"type":"update_order","id":"xxx","status":"completed"}
+Solo incluye ACTION si el usuario explícitamente pide hacer un cambio.`;
+  };
+
+  const handleAction = async (actionStr) => {
+    try {
+      const action = JSON.parse(actionStr);
+      if (action.type === "update_appointment") {
+        const list = (data.appointments||[]).map(a=>a.id===action.id?{...a,status:action.status}:a);
+        save({ appointments:list });
+        toast(`Cita actualizada a: ${action.status}`);
+      } else if (action.type === "update_order") {
+        const list = (data.orders||[]).map(o=>o.id===action.id?{...o,status:action.status}:o);
+        save({ orders:list });
+        toast(`Orden actualizada a: ${action.status}`);
+      }
+    } catch(e) { console.error("Action parse error:", e); }
   };
 
   const send = async () => {
-    if (!input.trim() || loading) return;
-    const q = input.trim();
-    setInput("");
-    const newHist = [...history, { role:"user", content:q }];
-    setHistory(newHist);
+    if (!question.trim() || loading) return;
+    const q = question.trim();
+    setQuestion("");
+    const newHistory = [...history, { role:"user", content:q }];
+    setHistory(newHistory);
     setLoading(true);
+
     try {
-      const msgs = newHist.map(m=>({ role:m.role, content:m.content }));
-      const answer = await callClaude(buildSystem(), msgs);
-      const clean = handleActions(answer);
-      setHistory(h=>[...h, { role:"assistant", content:clean }]);
+      const msgs = newHistory.map(m=>({ role:m.role, content:m.content }));
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({
+          model:"claude-sonnet-4-6",
+          max_tokens:1000,
+          system: buildContext(),
+          messages: msgs
+        })
+      });
+      const d = await res.json();
+      let answer = d.content?.map(b=>b.text||"").join("") || "Sin respuesta.";
+
+      // Extract and execute action if present
+      const actionMatch = answer.match(/ACTION:\s*(\{[^}]+\})/);
+      if (actionMatch) {
+        await handleAction(actionMatch[1]);
+        answer = answer.replace(/ACTION:\s*\{[^}]+\}/, "").trim();
+        answer += "\n\n✅ Acción ejecutada correctamente.";
+      }
+
+      setHistory(h=>[...h, { role:"assistant", content:answer }]);
     } catch(e) {
-      setHistory(h=>[...h, { role:"assistant", content:"Error de conexion. Intenta de nuevo." }]);
+      setHistory(h=>[...h, { role:"assistant", content:"Error al conectar. Intentá de nuevo." }]);
     }
     setLoading(false);
     setTimeout(()=>endRef.current?.scrollIntoView({ behavior:"smooth" }),100);
   };
 
-  const quickPrompts = [
-    "Cuantas citas tengo hoy?",
-    "Que ordenes estan activas?",
-    "Cuanto ingrese este mes?",
-    "Hay productos con stock bajo?",
-    "Toyota Corolla 2018, hace ruido al frenar en curvas",
-    "Presupuesto para cambio de aceite y frenos delanteros",
-    "Torque de ruedas para Hyundai Tucson 2020",
-    "Resumen completo del taller hoy",
+  // Quick action buttons
+  const quickActions = [
+    "¿Cuántas citas tengo hoy?",
+    "¿Qué órdenes están activas?",
+    "¿Cuánto ingresé este mes?",
+    "¿Hay productos con stock bajo?",
+    "¿Cuántas citas pendientes de confirmar?",
+    "Resumen del taller hoy",
   ];
 
   return (
-    <div style={{ maxWidth:860, margin:"0 auto", display:"flex", flexDirection:"column", height:"calc(100vh - 156px)" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
-        <div style={{ width:48, height:48, borderRadius:12, background:"linear-gradient(135deg,#8B5CF6,#2563EB)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>&#x1F9E0;</div>
-        <div>
-          <div style={{ fontWeight:800, fontSize:20 }}>Asistente IA — Tecno AutoAsisten CR</div>
-          <div style={{ fontSize:13, color:C.textMd }}>Diagnostico · Presupuestos · Manuales · Gestion del taller</div>
-        </div>
-        <button onClick={()=>setHistory([history[0]])} style={{ marginLeft:"auto", padding:"6px 14px", borderRadius:8, border:"1px solid "+C.border, background:"transparent", color:C.textSm, cursor:"pointer", fontSize:12 }}>Nueva conversacion</button>
-      </div>
+    <div style={{ maxWidth:800, margin:"0 auto", display:"flex", flexDirection:"column", height:"calc(100vh - 160px)" }}>
+      <AIPageHeader icon="🧠" title="Asistente IA del Taller" desc="Preguntá sobre citas, órdenes, clientes, ingresos — o pedile que actualice estados." />
 
+      {/* Quick actions */}
       {history.length<=1 && (
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:12, color:C.textSm, marginBottom:8 }}>Sugerencias rapidas:</div>
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, color:C.textSm, marginBottom:8 }}>Acciones rápidas:</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {quickPrompts.map(q=>(
-              <button key={q} onClick={()=>setInput(q)} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid "+C.border, background:C.card, color:C.textMd, cursor:"pointer", fontSize:12 }}>{q}</button>
+            {quickActions.map(q=>(
+              <button key={q} onClick={()=>setQuestion(q)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.textMd, cursor:"pointer", fontSize:12, transition:"all .1s" }}>
+                {q}
+              </button>
             ))}
           </div>
         </div>
       )}
 
-      <div style={{ flex:1, overflowY:"auto", border:"1px solid "+C.border, borderRadius:12, padding:"20px", marginBottom:14, background:C.card, display:"flex", flexDirection:"column", gap:18 }}>
+      {/* Chat */}
+      <div style={{ flex:1, overflowY:"auto", border:`1px solid ${C.border}`, borderRadius:12, padding:"16px", marginBottom:14, background:C.card, display:"flex", flexDirection:"column", gap:16 }}>
         {history.map((m,i)=>(
-          <div key={i} style={{ display:"flex", gap:12, justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
-            {m.role==="assistant" && <div style={{ width:36, height:36, borderRadius:"50%", background:"linear-gradient(135deg,#8B5CF6,#2563EB)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, marginTop:2 }}>&#x1F9E0;</div>}
-            <div style={{ maxWidth:"80%", background:m.role==="user"?"#2563EB22":C.bg, border:"1px solid "+(m.role==="user"?"#3B82F6":C.border), borderRadius:m.role==="user"?"12px 12px 4px 12px":"12px 12px 12px 4px", padding:"12px 16px", fontSize:14, lineHeight:1.75, whiteSpace:"pre-wrap" }}>
+          <div key={i} style={{ display:"flex", gap:10, justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
+            {m.role==="assistant" && (
+              <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>🧠</div>
+            )}
+            <div style={{ maxWidth:"78%", background:m.role==="user"?`${C.blue}22`:C.bg, border:`1px solid ${m.role==="user"?C.blueHi:C.border}`, borderRadius:12, padding:"12px 16px", fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap" }}>
               {m.content}
             </div>
-            {m.role==="user" && <div style={{ width:36, height:36, borderRadius:"50%", background:"linear-gradient(135deg,#2563EB,#06B6D4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, marginTop:2 }}>&#x1F464;</div>}
+            {m.role==="user" && (
+              <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👤</div>
+            )}
           </div>
         ))}
         {loading && (
-          <div style={{ display:"flex", gap:12 }}>
-            <div style={{ width:36, height:36, borderRadius:"50%", background:"linear-gradient(135deg,#8B5CF6,#2563EB)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>&#x1F9E0;</div>
-            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:"12px 12px 12px 4px", padding:"14px 18px", display:"flex", alignItems:"center", gap:10, color:C.textMd, fontSize:13 }}>
-              <Spinner />Analizando...
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ width:34, height:34, borderRadius:"50%", background:`linear-gradient(135deg,${C.purple},${C.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🧠</div>
+            <div style={{ background:C.bg, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 16px", display:"flex", alignItems:"center", gap:8, color:C.textMd, fontSize:13 }}>
+              <Spinner />Consultando datos del taller…
             </div>
           </div>
         )}
         <div ref={endRef} />
       </div>
 
+      {/* Input */}
       <div style={{ display:"flex", gap:10 }}>
-        <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey&&!loading) { e.preventDefault(); send(); } }}
-          placeholder="Escribi tu pregunta... (Enter para enviar, Shift+Enter para nueva linea)"
-          rows={2} style={{...IS(), flex:1, padding:"12px 16px", fontSize:14, resize:"none", lineHeight:1.5}} />
-        <button onClick={send} disabled={loading||!input.trim()} style={{ padding:"12px 22px", borderRadius:10, border:"none", background:loading||!input.trim()?C.border:"linear-gradient(135deg,#8B5CF6,#2563EB)", color:"#fff", fontWeight:700, cursor:loading||!input.trim()?"default":"pointer", fontSize:18, alignSelf:"stretch" }}>&#x2192;</button>
+        <input
+          value={question}
+          onChange={e=>setQuestion(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey&&!loading) { e.preventDefault(); send(); } }}
+          placeholder="Preguntá algo o pedí una acción… (Enter para enviar)"
+          style={{...IS(), flex:1, padding:"12px 16px", fontSize:14}}
+        />
+        <button onClick={send} disabled={loading||!question.trim()} style={{ padding:"12px 20px", borderRadius:10, border:"none", background:loading||!question.trim()?C.border:`linear-gradient(135deg,${C.purple},${C.blue})`, color:"#fff", fontWeight:700, cursor:loading||!question.trim()?"default":"pointer", fontSize:16 }}>→</button>
       </div>
-      <div style={{ fontSize:11, color:C.textSm, marginTop:6, textAlign:"center" }}>Potenciado por Claude AI · Acceso a datos reales del taller</div>
     </div>
   );
 }
-
 
 /* ═══════════════════════════════════════════════════
    INVOICES PAGE — Admin gestión de facturas
