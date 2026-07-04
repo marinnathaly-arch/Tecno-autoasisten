@@ -136,6 +136,7 @@ const TABLE = {
   inventory:    { table:"inventory",    toDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplier_id:r.supplierId||null, qty:r.qty||0, min_qty:r.minQty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplierId:r.supplier_id||"", qty:r.qty||0, minQty:r.min_qty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }) },
   accounting:   { table:"accounting",   toDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }) },
   service_reports: { table:"service_reports", toDb: r=>({ id:r.id, order_id:r.orderId, client_id:r.clientId, vehicle_id:r.vehicleId, mechanic:r.mechanic||"", works_done:r.worksDone||"", observations:r.observations||"", km_at_service:r.kmAtService||0, created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, orderId:r.order_id, clientId:r.client_id, vehicleId:r.vehicle_id, mechanic:r.mechanic||"", worksDone:r.works_done||"", observations:r.observations||"", kmAtService:r.km_at_service||0, createdAt:r.created_at||"" }) },
+  invoices:        { table:"invoices", toDb: r=>({ id:r.id, client_id:r.clientId, order_id:r.orderId||null, legal_name:r.legalName||"", id_num:r.idNum||"", address:r.address||"", email:r.email||"", phone:r.phone||"", status:r.status||"pending", notes:r.notes||"", created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, clientId:r.client_id, orderId:r.order_id||"", legalName:r.legal_name||"", idNum:r.id_num||"", address:r.address||"", email:r.email||"", phone:r.phone||"", status:r.status||"pending", notes:r.notes||"", createdAt:r.created_at||"" }) },
   library:      { table:"library",      toDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", upload_date:r.uploadDate||"", file_size:r.fileSize||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", uploadDate:r.upload_date||"", fileSize:r.file_size||"", notes:r.notes||"" }) },
   services:     { table:"services",     toDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }) },
   subcontracts: { table:"subcontracts", toDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", lead_time:r.leadTime||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", leadTime:r.lead_time||"", notes:r.notes||"" }) },
@@ -143,10 +144,10 @@ const TABLE = {
 };
 
 async function loadAll() {
-  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes,reports] = await Promise.all([
+  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes,reports,invoices] = await Promise.all([
     sb.get("clients"), sb.get("vehicles"), sb.get("workers"), sb.get("appointments"),
     sb.get("orders"), sb.get("suppliers"), sb.get("inventory"), sb.get("accounting"), sb.get("library"),
-    sb.get("services"), sb.get("subcontracts"), sb.get("quotes"), sb.get("service_reports")
+    sb.get("services"), sb.get("subcontracts"), sb.get("quotes"), sb.get("service_reports"), sb.get("invoices")
   ]);
   const loadedServices = (services||[]).map(TABLE.services.fromDb);
   return {
@@ -163,6 +164,7 @@ async function loadAll() {
     subcontracts: (subcontracts||[]).map(TABLE.subcontracts.fromDb),
     quotes:       (quotes||[]).map(TABLE.quotes.fromDb),
     reports:      (reports||[]).map(TABLE.service_reports.fromDb),
+    invoices:     (invoices||[]).map(TABLE.invoices.fromDb),
   };
 }
 
@@ -344,6 +346,7 @@ const NAV = [
   { id:"users",       icon:"🔐", label:"Usuarios",          group:"admin" },
   { id:"subcontracts",icon:"🤝", label:"Subcontrataciones", group:"gestión" },
   { id:"quotes",      icon:"💬", label:"Cotizaciones",      group:"taller" },
+  { id:"invoices",    icon:"🧾", label:"Facturas",          group:"taller" },
 ];
 
 const GROUPS = {
@@ -458,7 +461,7 @@ function MainApp({ session, onLogout }) {
         console.error("Supabase error:", e);
         setDbReady(false);
         // Fallback to seed data if DB unreachable
-        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[], reports:[] });
+        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[], reports:[], invoices:[] });
       }
     })();
   }, []);
@@ -546,6 +549,7 @@ function MainApp({ session, onLogout }) {
           : page==="users"       ? <UsersPage      session={session} />
           : page==="subcontracts"? <SubcontractsPage data={data} save={save} toast={showToast} />
           : page==="quotes"      ? <QuotesPage      data={data} save={save} toast={showToast} />
+          : page==="invoices"    ? <InvoicesPage    data={data} save={save} toast={showToast} />
           : null}
         </div>
       </div>
@@ -3476,6 +3480,7 @@ function ClientPortal({ session, onLogout }) {
     { id:"quote",        icon:"💬", label:"Cotizar" },
     { id:"orders",       icon:"📋", label:"Mis órdenes" },
     { id:"history",      icon:"📄", label:"Historial" },
+    { id:"invoice",      icon:"🧾", label:"Factura" },
     { id:"vehicles",     icon:"🚗", label:"Mis vehículos" },
   ];
 
@@ -3833,6 +3838,95 @@ function ClientPortal({ session, onLogout }) {
                   </div>
                 );
               });
+            })()}
+          </div>
+        )}
+
+        {/* SOLICITAR FACTURA */}
+        {tab==="invoice" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:8 }}>🧾 Solicitar factura electrónica</div>
+            <div style={{ fontSize:13, color:C.textMd, marginBottom:20 }}>Llenás tus datos fiscales y el taller prepara y te envía la factura.</div>
+
+            {(() => {
+              const myInvoices = (data?.invoices||[]).filter(r=>r.clientId===myClient?.id).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+              const [invForm, setInvForm] = useState({ legalName:"", idNum:"", address:"", email:session.email||"", phone:myClient?.phone||"", orderId:"", notes:"" });
+              const [invDone, setInvDone] = useState(false);
+              const [invLoading, setInvLoading] = useState(false);
+              const setI = (k,v) => setInvForm(p=>({...p,[k]:v}));
+
+              const submitInvoice = async () => {
+                if (!invForm.legalName.trim() || !invForm.idNum.trim()) return;
+                setInvLoading(true);
+                const newInv = { id:uid(), clientId:myClient.id, orderId:invForm.orderId||null, legalName:invForm.legalName.trim(), idNum:invForm.idNum.trim(), address:invForm.address.trim(), email:invForm.email.trim(), phone:invForm.phone.trim(), status:"pending", notes:invForm.notes.trim(), createdAt:new Date().toISOString() };
+                await sb.upsert("invoices", TABLE.invoices.toDb(newInv));
+                setInvDone(true);
+                setInvLoading(false);
+              };
+
+              const STATUS_INV = { pending:{ label:"Pendiente", color:C.amber }, processing:{ label:"En proceso", color:C.blueHi }, sent:{ label:"Enviada", color:C.green }, cancelled:{ label:"Cancelada", color:C.red } };
+
+              return (
+                <>
+                  {invDone ? (
+                    <div style={{ background:"#002D1A", border:`1px solid ${C.green}44`, borderRadius:12, padding:"20px", textAlign:"center" }}>
+                      <div style={{ fontSize:40, marginBottom:10 }}>✅</div>
+                      <div style={{ fontWeight:700, color:C.green, fontSize:16 }}>¡Solicitud enviada!</div>
+                      <div style={{ color:C.textMd, fontSize:13, marginTop:6 }}>El taller procesará tu factura y te la enviará al correo indicado.</div>
+                    </div>
+                  ) : (
+                    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"24px" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                        <div style={{ gridColumn:"span 2" }}>
+                          <Field label="Nombre legal / Razón social *"><input value={invForm.legalName} onChange={e=>setI("legalName",e.target.value)} placeholder="Juan Pérez Mora / Empresa S.A." style={IS()} /></Field>
+                        </div>
+                        <Field label="Cédula / RUC *"><input value={invForm.idNum} onChange={e=>setI("idNum",e.target.value)} placeholder="1-0000-0000 / 3-101-000000" style={IS()} /></Field>
+                        <Field label="Teléfono"><input value={invForm.phone} onChange={e=>setI("phone",e.target.value)} style={IS()} /></Field>
+                        <div style={{ gridColumn:"span 2" }}>
+                          <Field label="Correo electrónico para envío *"><input value={invForm.email} onChange={e=>setI("email",e.target.value)} style={IS()} /></Field>
+                        </div>
+                        <div style={{ gridColumn:"span 2" }}>
+                          <Field label="Dirección fiscal"><input value={invForm.address} onChange={e=>setI("address",e.target.value)} placeholder="Provincia, cantón, distrito, señas" style={IS()} /></Field>
+                        </div>
+                        <div style={{ gridColumn:"span 2" }}>
+                          <Field label="Orden de trabajo asociada (opcional)">
+                            <select value={invForm.orderId} onChange={e=>setI("orderId",e.target.value)} style={IS()}>
+                              <option value="">— Seleccionar orden —</option>
+                              {(data?.orders||[]).filter(o=>o.clientId===myClient?.id).map(o=>(
+                                <option key={o.id} value={o.id}>{fmtDate(o.date)} · {fmtCRC(o.total)}</option>
+                              ))}
+                            </select>
+                          </Field>
+                        </div>
+                        <div style={{ gridColumn:"span 2" }}>
+                          <Field label="Notas adicionales"><textarea value={invForm.notes} onChange={e=>setI("notes",e.target.value)} rows={2} placeholder="Cualquier detalle relevante para la factura…" style={{...IS(),resize:"vertical"}} /></Field>
+                        </div>
+                      </div>
+                      <button onClick={submitInvoice} disabled={invLoading||!invForm.legalName.trim()||!invForm.idNum.trim()} style={{ marginTop:18, width:"100%", padding:"13px", borderRadius:10, border:"none", background:(invLoading||!invForm.legalName.trim()||!invForm.idNum.trim())?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
+                        {invLoading ? "Enviando…" : "🧾 Solicitar factura"}
+                      </button>
+                    </div>
+                  )}
+
+                  {myInvoices.length>0 && (
+                    <div style={{ marginTop:24 }}>
+                      <div style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>Mis solicitudes de factura</div>
+                      {myInvoices.map(inv=>{
+                        const sc = STATUS_INV[inv.status]||STATUS_INV.pending;
+                        return (
+                          <div key={inv.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <div>
+                              <div style={{ fontWeight:600, fontSize:13 }}>{inv.legalName}</div>
+                              <div style={{ fontSize:12, color:C.textSm }}>{inv.idNum} · {fmtDate(inv.createdAt?.slice(0,10))}</div>
+                            </div>
+                            <Pill label={sc.label} color={sc.color} bg={`${sc.color}22`} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
             })()}
           </div>
         )}
@@ -4470,6 +4564,141 @@ Solo incluye ACTION si el usuario explícitamente pide hacer un cambio.`;
         />
         <button onClick={send} disabled={loading||!question.trim()} style={{ padding:"12px 20px", borderRadius:10, border:"none", background:loading||!question.trim()?C.border:`linear-gradient(135deg,${C.purple},${C.blue})`, color:"#fff", fontWeight:700, cursor:loading||!question.trim()?"default":"pointer", fontSize:16 }}>→</button>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   INVOICES PAGE — Admin gestión de facturas
+═══════════════════════════════════════════════════ */
+function InvoicesPage({ data, save, toast }) {
+  const [filter, setFilter] = useState("all");
+  const [delId,  setDelId]  = useState(null);
+
+  const invoices = data.invoices || [];
+  const filtered = filter==="all" ? invoices : invoices.filter(i=>i.status===filter);
+  const sorted   = [...filtered].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+
+  const upd = (id, patch) => {
+    save({ invoices: invoices.map(i=>i.id===id?{...i,...patch}:i) });
+    toast("Estado actualizado");
+  };
+  const del = (id) => { save({ invoices: invoices.filter(i=>i.id!==id) }); toast("Eliminada","err"); setDelId(null); };
+
+  const STATUS_INV = {
+    pending:    { label:"Pendiente",   color:"#F59E0B", bg:"#2D1A00" },
+    processing: { label:"En proceso",  color:"#3B82F6", bg:"#001A2D" },
+    sent:       { label:"Enviada",     color:"#10B981", bg:"#002D1A" },
+    cancelled:  { label:"Cancelada",   color:"#EF4444", bg:"#2D0000" },
+  };
+
+  const buildPDF = (inv) => {
+    const client = data.clients.find(c=>c.id===inv.clientId);
+    const order  = inv.orderId ? data.orders.find(o=>o.id===inv.orderId) : null;
+    const svcLines = order ? order.services.map(sid=>{
+      const s=(data.services||SERVICES_CAT).find(x=>x.id===sid);
+      return s ? `${s.name}: ${fmtCRC(s.price)}` : null;
+    }).filter(Boolean) : [];
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura - Tecno AutoAsisten CR</title>
+<style>body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;color:#111;padding:20px}
+h1{color:#1e3a5f;border-bottom:3px solid #1e3a5f;padding-bottom:10px}
+.header{display:flex;justify-content:space-between;margin-bottom:30px}
+.section{margin-bottom:20px}.section h3{color:#444;border-bottom:1px solid #ddd;padding-bottom:5px}
+table{width:100%;border-collapse:collapse}.table td,.table th{padding:8px;border:1px solid #ddd;text-align:left}
+.table th{background:#f0f4ff}.total{font-size:20px;font-weight:bold;color:#1e3a5f;text-align:right;margin-top:15px}
+.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #ddd;padding-top:15px}
+</style></head><body>
+<h1>🔧 Tecno AutoAsisten CR</h1>
+<div class="header">
+  <div><strong>FACTURA ELECTRÓNICA</strong><br>Fecha: ${new Date().toLocaleDateString("es-CR")}<br>N°: FAC-${inv.id?.slice(0,6).toUpperCase()}</div>
+  <div style="text-align:right">Estado: <strong>${STATUS_INV[inv.status]?.label||"Pendiente"}</strong></div>
+</div>
+<div class="section"><h3>Datos del cliente</h3>
+<p><strong>Nombre:</strong> ${inv.legalName}</p>
+<p><strong>Cédula/RUC:</strong> ${inv.idNum}</p>
+<p><strong>Correo:</strong> ${inv.email}</p>
+<p><strong>Teléfono:</strong> ${inv.phone}</p>
+${inv.address?`<p><strong>Dirección:</strong> ${inv.address}</p>`:""}
+</div>
+${order?`<div class="section"><h3>Detalle de servicios</h3>
+<table class="table"><tr><th>Descripción</th><th>Monto</th></tr>
+${svcLines.map(l=>`<tr><td>${l.split(":")[0]}</td><td>${l.split(":")[1]}</td></tr>`).join("")}
+${order.parts?.map(p=>`<tr><td>${p.name} × ${p.qty}</td><td>${fmtCRC(p.price*p.qty)}</td></tr>`).join("")||""}
+</table>
+<div class="total">Total: ${fmtCRC(order.total)}</div></div>`:""}
+${inv.notes?`<div class="section"><h3>Notas</h3><p>${inv.notes}</p></div>`:""}
+<div class="footer">Tecno AutoAsisten CR · Costa Rica · tecno-autoasisten.vercel.app<br>
+<em>Este documento es una representación de factura electrónica.</em></div>
+</body></html>`;
+
+    const blob = new Blob([html], { type:"text/html" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `Factura-${inv.legalName.replace(/\s+/g,"-")}-${inv.id?.slice(0,6)}.html`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const counts = { pending:invoices.filter(i=>i.status==="pending").length, processing:invoices.filter(i=>i.status==="processing").length, sent:invoices.filter(i=>i.status==="sent").length };
+
+  return (
+    <div>
+      <div style={{ fontWeight:800, fontSize:22, marginBottom:6 }}>🧾 Facturas electrónicas</div>
+      <div style={{ color:C.textMd, fontSize:14, marginBottom:20 }}>Solicitudes de factura de clientes. Descargá el PDF y enviáselo por correo o WhatsApp.</div>
+
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+        {[["pending","Pendientes",C.amber],["processing","En proceso",C.blueHi],["sent","Enviadas",C.green]].map(([k,l,color])=>(
+          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
+            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
+            <div style={{ fontSize:26, fontWeight:800, color, marginTop:5 }}>{counts[k]||0}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["all","Todas"],["pending","Pendientes"],["processing","En proceso"],["sent","Enviadas"],["cancelled","Canceladas"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${filter===v?C.blueHi:C.border}`, background:filter===v?`${C.blue}22`:"transparent", color:filter===v?C.blueHi:C.textMd, cursor:"pointer", fontSize:13, fontWeight:filter===v?700:400 }}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {sorted.map(inv=>{
+          const client = data.clients.find(c=>c.id===inv.clientId);
+          const order  = inv.orderId ? data.orders.find(o=>o.id===inv.orderId) : null;
+          const sc = STATUS_INV[inv.status]||STATUS_INV.pending;
+          return (
+            <div key={inv.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
+                <div style={{ flex:1, minWidth:200 }}>
+                  <div style={{ fontWeight:700, fontSize:15 }}>{inv.legalName}</div>
+                  <div style={{ fontSize:12, color:C.textSm, marginTop:3 }}>🪪 {inv.idNum} · 👤 {client?.name||"—"}</div>
+                  <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>✉️ {inv.email} · 📱 {inv.phone}</div>
+                  {inv.address && <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>📍 {inv.address}</div>}
+                  {order && <div style={{ fontSize:12, color:C.green, marginTop:4, fontWeight:600 }}>Orden: {fmtDate(order.date)} · {fmtCRC(order.total)}</div>}
+                  {inv.notes && <div style={{ fontSize:12, color:C.textSm, marginTop:4 }}>💬 {inv.notes}</div>}
+                  <div style={{ fontSize:11, color:C.textSm, marginTop:4 }}>Solicitada: {fmtDate(inv.createdAt?.slice(0,10))}</div>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
+                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                    {inv.status==="pending" && <TBtn label="▶ En proceso" color={C.blueHi} onClick={()=>upd(inv.id,{status:"processing"})} />}
+                    <button onClick={()=>buildPDF(inv)} style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.purple}44`, background:`${C.purple}18`, color:C.purple, fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                      📄 Generar PDF
+                    </button>
+                    {inv.status!=="sent" && inv.status!=="cancelled" && <TBtn label="✅ Marcar enviada" color={C.green} onClick={()=>upd(inv.id,{status:"sent"})} />}
+                    <IBtn icon="🗑" red onClick={()=>setDelId(inv.id)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length===0 && <Empty msg="No hay solicitudes de factura" />}
+      </div>
+
+      {delId && <Confirm msg="¿Eliminar esta solicitud?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
     </div>
   );
 }
