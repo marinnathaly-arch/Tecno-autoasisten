@@ -104,10 +104,11 @@ const TABLE = {
   vehicles:     { table:"vehicles",     toDb: r=>({ id:r.id, client_id:r.clientId, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, plate:r.plate||"", brand:r.brand||"", model:r.model||"", year:r.year||0, color:r.color||"", vin:r.vin||"", km:r.km||0, fuel:r.fuel||"", notes:r.notes||"" }) },
   workers:      { table:"workers",      toDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, role:r.role||"", phone:r.phone||"", specialty:r.specialty||"", status:r.status||"active" }) },
   appointments: { table:"appointments", toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, service_id:r.serviceId, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, serviceId:r.service_id, date:r.date||"", hour:r.hour||"", status:r.status||"pending", notes:r.notes||"", mechanic:r.mechanic||"" }) },
-  orders:       { table:"orders",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"" }) },
+  orders:       { table:"orders",       toDb: r=>({ id:r.id, client_id:r.clientId, vehicle_id:r.vehicleId, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanic_notes:r.mechanicNotes||"" }), fromDb: r=>({ id:r.id, clientId:r.client_id, vehicleId:r.vehicle_id, services:r.services||[], parts:r.parts||[], status:r.status||"active", date:r.date||"", total:r.total||0, notes:r.notes||"", mechanic:r.mechanic||"", mechanicNotes:r.mechanic_notes||"" }) },
   suppliers:    { table:"suppliers",    toDb: r=>({ id:r.id, name:r.name, contact:r.contact||"", phone:r.phone||"", email:r.email||"", category:r.category||"", pay_terms:r.payTerms||"", notes:r.notes||"", status:r.status||"active" }), fromDb: r=>({ id:r.id, name:r.name, contact:r.contact||"", phone:r.phone||"", email:r.email||"", category:r.category||"", payTerms:r.pay_terms||"", notes:r.notes||"", status:r.status||"active" }) },
   inventory:    { table:"inventory",    toDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplier_id:r.supplierId||null, qty:r.qty||0, min_qty:r.minQty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, category:r.category||"", supplierId:r.supplier_id||"", qty:r.qty||0, minQty:r.min_qty||0, price:r.price||0, cost:r.cost||0, unit:r.unit||"", sku:r.sku||"", notes:r.notes||"" }) },
   accounting:   { table:"accounting",   toDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, type:r.type||"income", category:r.category||"", description:r.description||"", amount:r.amount||0, date:r.date||"", ref:r.ref||"", notes:r.notes||"" }) },
+  service_reports: { table:"service_reports", toDb: r=>({ id:r.id, order_id:r.orderId, client_id:r.clientId, vehicle_id:r.vehicleId, mechanic:r.mechanic||"", works_done:r.worksDone||"", observations:r.observations||"", km_at_service:r.kmAtService||0, created_at:r.createdAt||new Date().toISOString() }), fromDb: r=>({ id:r.id, orderId:r.order_id, clientId:r.client_id, vehicleId:r.vehicle_id, mechanic:r.mechanic||"", worksDone:r.works_done||"", observations:r.observations||"", kmAtService:r.km_at_service||0, createdAt:r.created_at||"" }) },
   library:      { table:"library",      toDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", upload_date:r.uploadDate||"", file_size:r.fileSize||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, title:r.title, brand:r.brand||"", model:r.model||"", year:r.year||0, category:r.category||"", uploadDate:r.upload_date||"", fileSize:r.file_size||"", notes:r.notes||"" }) },
   services:     { table:"services",     toDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, cat:r.cat||"Otros" }) },
   subcontracts: { table:"subcontracts", toDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", lead_time:r.leadTime||"", notes:r.notes||"" }), fromDb: r=>({ id:r.id, name:r.name, price:r.price||0, provider:r.provider||"", leadTime:r.lead_time||"", notes:r.notes||"" }) },
@@ -115,10 +116,10 @@ const TABLE = {
 };
 
 async function loadAll() {
-  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes] = await Promise.all([
+  const [clients,vehicles,workers,appointments,orders,suppliers,inventory,accounting,library,services,subcontracts,quotes,reports] = await Promise.all([
     sb.get("clients"), sb.get("vehicles"), sb.get("workers"), sb.get("appointments"),
     sb.get("orders"), sb.get("suppliers"), sb.get("inventory"), sb.get("accounting"), sb.get("library"),
-    sb.get("services"), sb.get("subcontracts"), sb.get("quotes")
+    sb.get("services"), sb.get("subcontracts"), sb.get("quotes"), sb.get("service_reports")
   ]);
   const loadedServices = (services||[]).map(TABLE.services.fromDb);
   return {
@@ -134,6 +135,7 @@ async function loadAll() {
     services:     loadedServices.length ? loadedServices : SERVICES_CAT,
     subcontracts: (subcontracts||[]).map(TABLE.subcontracts.fromDb),
     quotes:       (quotes||[]).map(TABLE.quotes.fromDb),
+    reports:      (reports||[]).map(TABLE.service_reports.fromDb),
   };
 }
 
@@ -428,7 +430,7 @@ function MainApp({ session, onLogout }) {
         console.error("Supabase error:", e);
         setDbReady(false);
         // Fallback to seed data if DB unreachable
-        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[] });
+        setData({ clients:SEED_CLIENTS, vehicles:SEED_VEHICLES, appointments:SEED_APPTS, orders:SEED_ORDERS, workers:SEED_WORKERS, suppliers:SEED_SUPPLIERS, inventory:SEED_INVENTORY, accounting:SEED_ACCOUNTING, library:SEED_LIBRARY, services:SERVICES_CAT, subcontracts:[], quotes:[], reports:[] });
       }
     })();
   }, []);
@@ -1033,6 +1035,7 @@ function OrdersPage({ data, save, toast }) {
   const [detail, setDetail] = useState(null);
   const [delId,  setDelId]  = useState(null);
   const [filter, setFilter] = useState("all");
+  const [reportModal, setReportModal] = useState(null);
 
   const filtered = data.orders.filter(o=>filter==="all"||o.status===filter);
 
@@ -1048,6 +1051,16 @@ function OrdersPage({ data, save, toast }) {
 
   const upd = (id,patch) => { save({ orders:data.orders.map(o=>o.id===id?{...o,...patch}:o) }); toast("Estado actualizado"); };
   const del = (id) => { save({ orders:data.orders.filter(o=>o.id!==id) }); toast("Eliminada","err"); setDelId(null); };
+
+  const saveReport = async (report) => {
+    const list = [...(data.reports||[])];
+    const existing = list.findIndex(r=>r.orderId===report.orderId);
+    if (existing>=0) list[existing]=report;
+    else list.push(report);
+    save({ reports:list });
+    toast("Informe guardado ✓");
+    setReportModal(null);
+  };
 
   const newDefault = { clientId:data.clients[0]?.id||"", vehicleId:data.vehicles[0]?.id||"", services:[], parts:[], status:"active", date:today(), notes:"", mechanic:data.workers[0]?.name||"", total:0 };
 
@@ -1065,6 +1078,15 @@ function OrdersPage({ data, save, toast }) {
           const client  = data.clients.find(c=>c.id===o.clientId);
           const vehicle = data.vehicles.find(v=>v.id===o.vehicleId);
           const sc      = ORDER_STATUS[o.status];
+
+          const waReadyLink = (() => {
+            const phone = (client?.phone||"").replace(/\D/g,"");
+            if (!phone || o.status !== "completed") return null;
+            const waPhone = phone.startsWith("506") ? phone : `506${phone}`;
+            const msg = `Hola ${client?.name||""}! 🎉\n\nLe informamos que su vehículo *${vehicle?.plate||""} ${vehicle?.brand||""} ${vehicle?.model||}* ya está *LISTO* para retirar en Tecno AutoAsisten CR.\n\n✅ Servicios realizados:\n${o.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).map(n=>`• ${n}`).join("\n")}\n\n💰 Total: ${fmtCRC(o.total)}\n\n¡Gracias por confiar en nosotros! Cualquier consulta estamos a su disposición.`;
+            return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+          })();
+
           return (
             <div key={o.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px" }}>
               <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" }}>
@@ -1072,14 +1094,24 @@ function OrdersPage({ data, save, toast }) {
                   <div style={{ fontWeight:700, fontSize:15 }}>{client?.name||"—"} <span style={{ fontWeight:400, color:C.textSm, fontSize:13 }}>· {vehicle?.plate}</span></div>
                   <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.mechanic} · {fmtDate(o.date)}</div>
                   <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>{o.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).join(", ")}</div>
+                  {o.mechanicNotes && <div style={{ fontSize:12, color:C.blueHi, marginTop:4 }}>🔧 {o.mechanicNotes}</div>}
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(o.total)}</div>
                   <Pill label={sc?.label} color={sc?.color} bg={sc?.bg} />
                 </div>
-                <div style={{ display:"flex", gap:6 }}>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                   <TBtn label="Ver" color={C.blueHi} onClick={()=>setDetail(o)} />
                   {o.status==="active" && <TBtn label="Completar" color={C.green} onClick={()=>upd(o.id,{status:"completed"})} />}
+                  {o.status==="completed" && (
+                    <TBtn label={`📋 ${(data.reports||[]).find(r=>r.orderId===o.id) ? "Ver informe" : "Llenar informe"}`} color={C.purple} onClick={()=>setReportModal(o)} />
+                  )}
+                  {waReadyLink && (
+                    <a href={waReadyLink} target="_blank" rel="noopener noreferrer"
+                      style={{ padding:"6px 10px", borderRadius:7, border:`1px solid #25D36644`, background:`#25D36618`, color:"#25D366", fontWeight:700, fontSize:12, textDecoration:"none", display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
+                      📲 Avisar listo
+                    </a>
+                  )}
                   <IBtn icon="✏️" onClick={()=>setModal({mode:"edit",item:o})} />
                   <IBtn icon="🗑" red onClick={()=>setDelId(o.id)} />
                 </div>
@@ -1093,6 +1125,7 @@ function OrdersPage({ data, save, toast }) {
       {modal  && <OrderModal item={modal.item} data={data} onSave={upsert} onClose={()=>setModal(null)} />}
       {detail && <OrderDetail order={detail} data={data} onClose={()=>setDetail(null)} />}
       {delId  && <Confirm msg="¿Eliminar esta orden?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+      {reportModal && <ServiceReportModal order={reportModal} data={data} existing={(data.reports||[]).find(r=>r.orderId===reportModal.id)} onSave={saveReport} onClose={()=>setReportModal(null)} />}
     </div>
   );
 }
@@ -1152,7 +1185,10 @@ function OrderModal({ item, data, onSave, onClose }) {
         ))}
       </div>
 
-      <Field label="Notas"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      <Field label="Notas del cliente"><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      <div style={{ marginTop:12 }}>
+        <Field label="🔧 Notas del mecánico (proceso / diagnóstico)"><textarea value={f.mechanicNotes||""} onChange={e=>set("mechanicNotes",e.target.value)} rows={2} placeholder="Ej: Se encontró desgaste en pastillas, se reemplazaron…" style={{...IS(),resize:"vertical"}} /></Field>
+      </div>
 
       <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginTop:14, display:"flex", justifyContent:"space-between" }}>
         <span style={{ color:C.textMd, fontSize:14 }}>Total estimado</span>
@@ -2752,6 +2788,64 @@ function AuthPage({ onLogin }) {
   const [error,    setError]    = useState("");
   const [pending,  setPending]  = useState(false);
   const [resetSent,setResetSent]= useState(false);
+  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem("tac_remember_email"));
+  const [biometricAvail, setBiometricAvail] = useState(false);
+
+  useEffect(()=>{
+    // Pre-fill remembered email
+    const saved = localStorage.getItem("tac_remember_email");
+    if (saved) setEmail(saved);
+    // Check if biometric auth is available
+    if (window.PublicKeyCredential) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then(avail => setBiometricAvail(avail))
+        .catch(()=>{});
+    }
+  },[]);
+
+  const handleBiometric = async () => {
+    setError("");
+    if (!email.trim()) { setError("Ingresá tu correo primero para usar Face ID."); return; }
+    try {
+      // Use WebAuthn to verify the user biometrically
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          timeout: 60000,
+          userVerification: "required",
+          rpId: window.location.hostname,
+        }
+      });
+      if (credential) {
+        // Biometric passed — try sign in with stored password if available
+        const storedPw = sessionStorage.getItem("tac_pw_temp");
+        if (storedPw) {
+          setPassword(storedPw);
+          // Auto-submit
+          setLoading(true);
+          const res = await auth.signIn(email.trim(), storedPw);
+          if (res.access_token) {
+            const userId = res.user?.id;
+            const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name,role`, {
+              headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
+            });
+            const rows = await checkRes.json();
+            const row  = rows?.[0];
+            if (!row) onLogin(res.access_token, res.user?.email||email.trim(), "admin");
+            else if (row.status==="approved") onLogin(res.access_token, row.name||res.user?.email, row.role||"client");
+            else setError("Cuenta pendiente de aprobación.");
+          } else setError("No se pudo verificar. Ingresá tu contraseña manualmente.");
+          setLoading(false);
+        } else {
+          setError("Ingresá tu contraseña una primera vez para activar Face ID.");
+        }
+      }
+    } catch(e) {
+      if (e.name !== "NotAllowedError") setError("Face ID no disponible en este momento.");
+    }
+  };
 
   const handleForgotPassword = async () => {
     setError("");
@@ -2783,20 +2877,44 @@ function AuthPage({ onLogin }) {
         const res = await auth.signUp(email.trim(), password);
         if (res.error) { setError(res.error.message || "Error al registrarse."); setLoading(false); return; }
 
-        // 2. Save profile in pending_users table
-        const userId = res.user?.id || res.id;
+        // 2. Try to sign in immediately to get a token (works when email confirm is off)
+        // If email confirm is ON, Supabase won't let us log in yet — we store the pending record anyway
+        const signInRes = await auth.signIn(email.trim(), password);
+        const userId = res.user?.id || res.id || signInRes.user?.id;
+        const token  = signInRes.access_token;
+
+        // 3. Save profile in pending_users table
         if (userId) {
           await fetch(`${SB_URL}/rest/v1/pending_users`, {
             method: "POST",
-            headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+            headers: { apikey: SB_KEY, Authorization: `Bearer ${token||SB_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({ id: userId, name: name.trim(), phone: phone.trim(), email: email.trim(), status: "pending", role: "client", created_at: new Date().toISOString() })
           });
         }
         setPending(true);
 
       } else {
-        // LOGIN — check if approved first
+        // LOGIN — try sign in
         const res = await auth.signIn(email.trim(), password);
+
+        // Handle "Email not confirmed" error specifically
+        if (res.error?.message?.toLowerCase().includes("email not confirmed")) {
+          // Try to check pending_users by email instead
+          const checkByEmail = await fetch(`${SB_URL}/rest/v1/pending_users?email=eq.${encodeURIComponent(email.trim())}&select=status,name,role`, {
+            headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+          });
+          const rows = await checkByEmail.json();
+          const row  = rows?.[0];
+          if (row?.status === "pending") {
+            setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
+          } else if (row?.status === "approved") {
+            setError("Tu cuenta fue aprobada pero necesita confirmación de correo. Revisá tu bandeja de entrada.");
+          } else {
+            setError("Correo o contraseña incorrectos.");
+          }
+          setLoading(false); return;
+        }
+
         if (res.error || !res.access_token) {
           setError(res.error?.message || "Correo o contraseña incorrectos.");
           setLoading(false); return;
@@ -2804,16 +2922,19 @@ function AuthPage({ onLogin }) {
 
         // Check approval status
         const userId = res.user?.id;
-        const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name`, {
+        const checkRes = await fetch(`${SB_URL}/rest/v1/pending_users?id=eq.${userId}&select=status,name,role`, {
           headers: { apikey: SB_KEY, Authorization: `Bearer ${res.access_token}` }
         });
         const userRows = await checkRes.json();
         const userRow  = userRows?.[0];
 
         if (!userRow) {
-          // No pending_users record = admin account, allow in
+          if (rememberMe) localStorage.setItem("tac_remember_email", email.trim());
+          else localStorage.removeItem("tac_remember_email");
           onLogin(res.access_token, res.user?.email || email.trim(), "admin");
         } else if (userRow.status === "approved") {
+          if (rememberMe) localStorage.setItem("tac_remember_email", email.trim());
+          else localStorage.removeItem("tac_remember_email");
           onLogin(res.access_token, userRow.name || res.user?.email, userRow.role || "client");
         } else if (userRow.status === "pending") {
           setError("Tu cuenta está pendiente de aprobación. El administrador te confirmará pronto.");
@@ -2931,6 +3052,13 @@ function AuthPage({ onLogin }) {
             )}
           </div>
 
+          {mode==="login" && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:4 }}>
+              <input type="checkbox" id="remember" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)} style={{ width:16, height:16, cursor:"pointer", accentColor:C.blueHi }} />
+              <label htmlFor="remember" style={{ fontSize:13, color:C.textMd, cursor:"pointer" }}>Recordar mi correo</label>
+            </div>
+          )}
+
           {error && <div style={{ marginTop:14, background:"#2D0000", border:`1px solid ${C.red}44`, borderRadius:8, padding:"10px 14px", fontSize:13, color:C.red }}>❌ {error}</div>}
 
           {mode==="register" && (
@@ -2939,12 +3067,18 @@ function AuthPage({ onLogin }) {
             </div>
           )}
 
-          <button onClick={handleSubmit} disabled={loading} style={{ marginTop:20, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+          <button onClick={handleSubmit} disabled={loading} style={{ marginTop:16, width:"100%", padding:"13px", borderRadius:10, border:"none", background:loading?C.border:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
             {loading ? <><Spinner />{mode==="login"?"Entrando…":"Enviando solicitud…"}</> : mode==="login" ? "Entrar al sistema →" : "Enviar solicitud →"}
           </button>
 
+          {mode==="login" && biometricAvail && (
+            <button onClick={handleBiometric} style={{ marginTop:10, width:"100%", padding:"11px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              🔐 Usar Face ID / Huella digital
+            </button>
+          )}
+
           {mode==="login" && (
-            <button onClick={()=>{ setMode("forgot"); setError(""); }} style={{ marginTop:14, width:"100%", padding:"6px", background:"none", border:"none", color:C.blueHi, fontSize:13, cursor:"pointer", textAlign:"center" }}>
+            <button onClick={()=>{ setMode("forgot"); setError(""); }} style={{ marginTop:10, width:"100%", padding:"6px", background:"none", border:"none", color:C.blueHi, fontSize:13, cursor:"pointer", textAlign:"center" }}>
               ¿Olvidaste tu contraseña?
             </button>
           )}
@@ -3139,8 +3273,8 @@ function ClientPortal({ session, onLogout }) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [cls, vhs, ords, apts, wks, svcs, qts] = await Promise.all([
-        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers"), sb.get("services"), sb.get("quotes")
+      const [cls, vhs, ords, apts, wks, svcs, qts, rpts] = await Promise.all([
+        sb.get("clients"), sb.get("vehicles"), sb.get("orders"), sb.get("appointments"), sb.get("workers"), sb.get("services"), sb.get("quotes"), sb.get("service_reports")
       ]);
       const allClients  = (cls||[]).map(TABLE.clients.fromDb);
       const allVehicles = (vhs||[]).map(TABLE.vehicles.fromDb);
@@ -3236,6 +3370,7 @@ function ClientPortal({ session, onLogout }) {
     { id:"book",         icon:"➕", label:"Agendar cita" },
     { id:"quote",        icon:"💬", label:"Cotizar" },
     { id:"orders",       icon:"📋", label:"Mis órdenes" },
+    { id:"history",      icon:"📄", label:"Historial" },
     { id:"vehicles",     icon:"🚗", label:"Mis vehículos" },
   ];
 
@@ -3387,7 +3522,7 @@ function ClientPortal({ session, onLogout }) {
                   </Field>
                   <Field label="Servicio">
                     <select value={apptForm.serviceId} onChange={e=>setApptForm(f=>({...f,serviceId:e.target.value}))} style={IS()}>
-                      {services.map(s=><option key={s.id} value={s.id}>{s.name} · {fmtCRC(s.price)}</option>)}
+                      {services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </Field>
                   <Field label="Fecha">
@@ -3526,6 +3661,66 @@ function ClientPortal({ session, onLogout }) {
                 </div>
               );
             })}
+          </div>
+        )}
+
+
+        {/* HISTORIAL DE SERVICIOS */}
+        {tab==="history" && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:17, marginBottom:16 }}>📄 Historial de servicios</div>
+            {(() => {
+              const myReports = (data?.reports||[]).filter(r=>r.clientId===myClient?.id).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+              if (myReports.length===0) return <Empty msg="No tenés informes de servicio aún" />;
+              return myReports.map(r=>{
+                const vehicle = vehicles.find(v=>v.id===r.vehicleId);
+                const order   = data?.orders?.find(o=>o.id===r.orderId);
+                return (
+                  <div key={r.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 20px", marginBottom:14 }}>
+                    {/* Header */}
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:15 }}>📋 Informe de servicio</div>
+                        <div style={{ fontSize:12, color:C.textSm, marginTop:3 }}>
+                          {vehicle && `${vehicle.plate} — ${vehicle.year} ${vehicle.brand} ${vehicle.model}`}
+                        </div>
+                        <div style={{ fontSize:12, color:C.textSm, marginTop:2 }}>
+                          {fmtDate(order?.date||r.createdAt?.slice(0,10))} · {r.mechanic}
+                          {r.kmAtService>0 && ` · ${Number(r.kmAtService).toLocaleString()} km`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Servicios realizados */}
+                    {order?.services?.length>0 && (
+                      <div style={{ marginBottom:12 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:6 }}>Servicios realizados</div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                          {order.services.map(sid=>{
+                            const s=(data.services||SERVICES_CAT).find(x=>x.id===sid);
+                            return s ? <span key={sid} style={{ background:`${C.green}18`, color:C.green, borderRadius:6, padding:"3px 10px", fontSize:12, fontWeight:600 }}>✅ {s.name}</span> : null;
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Trabajos realizados */}
+                    <div style={{ marginBottom:12 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:6 }}>Trabajos realizados</div>
+                      <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px", fontSize:13, lineHeight:1.6 }}>{r.worksDone}</div>
+                    </div>
+
+                    {/* Observaciones */}
+                    {r.observations && (
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:6 }}>Observaciones</div>
+                        <div style={{ background:`${C.amber}11`, border:`1px solid ${C.amber}33`, borderRadius:8, padding:"10px 12px", fontSize:13, color:C.amber, lineHeight:1.6 }}>💡 {r.observations}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
@@ -3919,5 +4114,78 @@ function ResetPasswordPage({ token, onDone }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   SERVICE REPORT MODAL — Informe de servicio
+═══════════════════════════════════════════════════ */
+function ServiceReportModal({ order, data, existing, onSave, onClose }) {
+  const client  = data.clients.find(c=>c.id===order.clientId);
+  const vehicle = data.vehicles.find(v=>v.id===order.vehicleId);
+  const [f, setF] = useState(existing || {
+    id: uid(), orderId: order.id, clientId: order.clientId, vehicleId: order.vehicleId,
+    mechanic: order.mechanic||"", worksDone: "", observations: "",
+    kmAtService: vehicle?.km||0, createdAt: new Date().toISOString()
+  });
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+
+  return (
+    <Modal title="📋 Informe de servicio" onClose={onClose} wide>
+      {/* Header info */}
+      <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Cliente</div>
+          <div style={{ fontWeight:700 }}>{client?.name||"—"}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Vehículo</div>
+          <div style={{ fontWeight:700 }}>{vehicle?.plate} — {vehicle?.year} {vehicle?.brand} {vehicle?.model}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Fecha</div>
+          <div>{fmtDate(order.date)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Mecánico</div>
+          <div>{order.mechanic||"—"}</div>
+        </div>
+      </div>
+
+      {/* Servicios realizados */}
+      <div style={{ marginBottom:14 }}>
+        <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:6 }}>Servicios realizados</div>
+        <div style={{ background:C.bg, borderRadius:8, padding:"10px 12px", fontSize:13 }}>
+          {order.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).map((n,i)=>(
+            <div key={i} style={{ padding:"3px 0", borderBottom:`1px solid ${C.border}` }}>✅ {n}</div>
+          ))}
+          {order.parts?.length>0 && order.parts.map((p,i)=>(
+            <div key={`p${i}`} style={{ padding:"3px 0", borderBottom:`1px solid ${C.border}`, color:C.textSm }}>🔩 {p.name} × {p.qty}</div>
+          ))}
+        </div>
+      </div>
+
+      <Field label="Trabajos realizados *">
+        <textarea value={f.worksDone} onChange={e=>set("worksDone",e.target.value)} rows={4} placeholder="Ej: Se realizó cambio de aceite y filtro. Se inspeccionaron frenos delanteros y traseros encontrándose en buen estado…" style={{...IS(),resize:"vertical"}} />
+      </Field>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Observaciones / Recomendaciones">
+          <textarea value={f.observations} onChange={e=>set("observations",e.target.value)} rows={3} placeholder="Ej: Se recomienda revisión de llantas en próxima visita. Nivel de refrigerante bajo, se recomendó al cliente…" style={{...IS(),resize:"vertical"}} />
+        </Field>
+      </div>
+
+      <div style={{ marginTop:14 }}>
+        <Field label="Kilometraje al momento del servicio">
+          <input type="number" value={f.kmAtService} onChange={e=>set("kmAtService",+e.target.value)} style={IS()} placeholder="Ej: 87500" />
+        </Field>
+      </div>
+
+      <div style={{ background:`${C.green}11`, border:`1px solid ${C.green}33`, borderRadius:8, padding:"10px 14px", marginTop:14, fontSize:12, color:C.green }}>
+        📱 Este informe quedará visible para el cliente en su historial de vehículo dentro de la app.
+      </div>
+
+      <ModalActions onSave={()=>{ if(f.worksDone.trim()) onSave(f); }} onClose={onClose} />
+    </Modal>
   );
 }
