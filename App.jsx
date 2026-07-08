@@ -334,6 +334,21 @@ const SEED_LIBRARY = [
 /* ═══════════════════════════════════════════════════
    NAV ITEMS
 ═══════════════════════════════════════════════════ */
+const DEFAULT_SETTINGS = {
+  currency:"CRC", monthlyGoal:500000,
+  schedWeekdayStart:16, schedWeekdayEnd:22,
+  schedSatStart:7, schedSatEnd:17, schedSunOpen:false,
+  socialCharges:26.67, hiddenNav:[],
+};
+function getSettings() {
+  try { const s=localStorage.getItem("tac_settings"); return s?{...DEFAULT_SETTINGS,...JSON.parse(s)}:DEFAULT_SETTINGS; } catch { return DEFAULT_SETTINGS; }
+}
+function saveSettings(patch) {
+  const next={...getSettings(),...patch};
+  localStorage.setItem("tac_settings",JSON.stringify(next));
+  return next;
+}
+
 const NAV = [
   { id:"dashboard",   icon:"◈",  label:"Inicio",            group:"principal" },
   { id:"intake",      icon:"🚘", label:"Ingreso de Auto",    group:"taller" },
@@ -353,6 +368,7 @@ const NAV = [
   { id:"subcontracts",icon:"🤝", label:"Subcontrataciones", group:"gestión" },
   { id:"quotes",      icon:"💬", label:"Cotizaciones",      group:"taller" },
   { id:"invoices",    icon:"🧾", label:"Facturas",          group:"taller" },
+  { id:"settings",    icon:"⚙️", label:"Configuración",     group:"admin" },
 ];
 
 const GROUPS = {
@@ -549,6 +565,7 @@ function MainApp({ session, onLogout }) {
           : page==="library"     ? <LibraryPage    data={data} save={save} toast={showToast} />
           : page==="intake"      ? <IntakePage     data={data} save={save} toast={showToast} />
           : page==="ai_assistant" ? <AIAssistantPage data={data} save={save} toast={showToast} />
+          : page==="settings"     ? <SettingsPage />
           : page==="users"       ? <UsersPage      session={session} />
           : page==="subcontracts"? <SubcontractsPage data={data} save={save} toast={showToast} />
           : page==="quotes"      ? <QuotesPage      data={data} save={save} toast={showToast} />
@@ -583,10 +600,13 @@ function Sidebar({ page, setPage, open, setOpen }) {
       </div>
 
       <div style={{ flex:1, overflowY:"auto", padding:"10px 8px" }}>
-        {groups.map(g => (
+        {groups.map(g => {
+          const visibleItems = NAV.filter(n=>n.group===g && !getSettings().hiddenNav?.includes(n.id));
+          if (visibleItems.length===0) return null;
+          return (
           <div key={g} style={{ marginBottom:4 }}>
             {open && <div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:1, padding:"10px 8px 4px" }}>{GROUPS[g]}</div>}
-            {NAV.filter(n=>n.group===g).map(n => {
+            {NAV.filter(n=>n.group===g && !getSettings().hiddenNav?.includes(n.id)).map(n => {
               const active = page===n.id;
               return (
                 <button key={n.id} onClick={()=>setPage(n.id)} title={n.label}
@@ -597,7 +617,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
               );
             })}
           </div>
-        ))}
+        ); })}
       </div>
     </div>
   );
@@ -623,48 +643,62 @@ function StubPage({ label, icon }) {
    DASHBOARD
 ═══════════════════════════════════════════════════ */
 function Dashboard({ data, setPage }) {
-  const { clients, appointments, orders, vehicles } = data;
+  const { clients, appointments, orders, vehicles, workers, inventory } = data;
+  const cfg = getSettings();
+  const fmt = (n) => cfg.currency==="USD" ? `$${(n/530).toFixed(2)}` : fmtCRC(n);
 
-  const todayAppts  = appointments.filter(a=>a.date===today());
-  const pendingAppts= appointments.filter(a=>a.status==="pending");
-  const activeOrders= orders.filter(o=>o.status==="active");
-
-  // income this month
+  const todayStr = today();
   const thisMonth = new Date().toISOString().slice(0,7);
-  const monthIncome= orders.filter(o=>o.date?.startsWith(thisMonth)&&o.status==="completed").reduce((s,o)=>s+o.total,0);
 
-  // health score
-  const issues = pendingAppts.length>5 || activeOrders.length>3;
-  const healthLabel = issues ? "Revisar carga" : "Al día ✓";
-  const healthColor = issues ? C.amber : C.green;
+  const todayAppts   = appointments.filter(a=>a.date===todayStr);
+  const pendingAppts = appointments.filter(a=>a.status==="pending");
+  const activeOrders = orders.filter(o=>o.status==="active");
+  const monthIncome  = orders.filter(o=>o.status==="completed"&&o.date?.startsWith(thisMonth)).reduce((s,o)=>s+o.total,0);
+  const lowStock     = (inventory||[]).filter(i=>i.qty<=i.minQty);
+  const goalPct      = cfg.monthlyGoal>0 ? Math.min(100,Math.round(monthIncome/cfg.monthlyGoal*100)) : 0;
 
-  // upcoming appointments (next 3)
-  const upcoming = [...appointments].filter(a=>a.date>=today()&&a.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date)||a.hour.localeCompare(b.hour)).slice(0,4);
+  // Health check
+  const alerts = [];
+  if (pendingAppts.length>0) alerts.push(`${pendingAppts.length} cita${pendingAppts.length>1?"s":""} sin confirmar`);
+  if (activeOrders.length>0) alerts.push(`${activeOrders.length} orden${activeOrders.length>1?"es":""} activa${activeOrders.length>1?"s":""}`);
+  if (lowStock.length>0)     alerts.push(`${lowStock.length} producto${lowStock.length>1?"s":""} con stock bajo`);
+  const isOk = alerts.length===0;
 
-  const kpis = [
-    { label:"Estado del taller",    value:healthLabel,          color:healthColor, icon:"⚡", sub:"Hoy" },
-    { label:"Citas hoy",            value:todayAppts.length,    color:C.blueHi,   icon:"📅", sub:`${pendingAppts.length} pendientes` },
-    { label:"Órdenes activas",      value:activeOrders.length,  color:C.amber,    icon:"🔧", sub:"En proceso" },
-    { label:"Ingresos del mes",     value:fmtCRC(monthIncome),  color:C.green,    icon:"💰", sub:new Date().toLocaleDateString("es-CR",{month:"long"}) },
-    { label:"Clientes registrados", value:clients.length,       color:C.purple,   icon:"👤", sub:`${vehicles.length} vehículos` },
-  ];
+  const upcoming = [...appointments].filter(a=>a.date>=todayStr&&a.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date)||a.hour.localeCompare(b.hour)).slice(0,4);
 
   return (
     <div>
-      {/* greeting */}
-      <div style={{ marginBottom:28 }}>
+      {/* Greeting */}
+      <div style={{ marginBottom:24 }}>
         <div style={{ fontSize:22, fontWeight:800 }}>Buenos días, Tecno AutoAsisten CR 👋</div>
         <div style={{ color:C.textMd, fontSize:14, marginTop:4 }}>{todayLabel()}</div>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:14, marginBottom:28 }}>
-        {kpis.map(k=>(
-          <div key={k.label} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"18px 20px" }}>
+      {/* Health Banner */}
+      <div style={{ background:isOk?`${C.green}18`:`${C.amber}18`, border:`1px solid ${isOk?C.green:C.amber}44`, borderRadius:12, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", gap:14 }}>
+        <div style={{ fontSize:28 }}>{isOk?"✅":"⚠️"}</div>
+        <div>
+          <div style={{ fontWeight:700, color:isOk?C.green:C.amber, fontSize:15 }}>
+            {isOk ? "Taller al día — sin alertas pendientes" : `${alerts.length} alerta${alerts.length>1?"s":""} activa${alerts.length>1?"s":""}`}
+          </div>
+          {!isOk && <div style={{ fontSize:13, color:C.textMd, marginTop:3 }}>{alerts.join(" · ")}</div>}
+        </div>
+        {!isOk && <button onClick={()=>setPage(pendingAppts.length>0?"appointments":"orders")} style={{ marginLeft:"auto", padding:"7px 14px", borderRadius:8, border:`1px solid ${C.amber}`, background:"transparent", color:C.amber, cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>Ver →</button>}
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:14, marginBottom:24 }}>
+        {[
+          { label:"Citas hoy",        value:todayAppts.length,  sub:`${pendingAppts.length} sin confirmar`, color:C.blueHi, icon:"📅", page:"appointments" },
+          { label:"Órdenes activas",  value:activeOrders.length,sub:"En proceso",                          color:C.amber,  icon:"🔧", page:"orders" },
+          { label:"Ingresos del mes", value:fmt(monthIncome),   sub:`Meta: ${fmt(cfg.monthlyGoal)}`,       color:C.green,  icon:"💰", page:"metrics" },
+          { label:"Clientes",         value:clients.length,     sub:`${vehicles.length} vehículos`,        color:C.purple, icon:"👤", page:"clients" },
+        ].map(k=>(
+          <div key={k.label} onClick={()=>setPage(k.page)} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"18px 20px", cursor:"pointer", transition:"border-color .15s" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
               <div>
                 <div style={{ fontSize:11, color:C.textSm, fontWeight:600, textTransform:"uppercase", letterSpacing:.8 }}>{k.label}</div>
-                <div style={{ fontSize:24, fontWeight:800, color:k.color, marginTop:6, lineHeight:1 }}>{k.value}</div>
+                <div style={{ fontSize:26, fontWeight:800, color:k.color, marginTop:6, lineHeight:1 }}>{k.value}</div>
                 <div style={{ fontSize:11, color:C.textSm, marginTop:4 }}>{k.sub}</div>
               </div>
               <span style={{ fontSize:22 }}>{k.icon}</span>
@@ -672,6 +706,32 @@ function Dashboard({ data, setPage }) {
           </div>
         ))}
       </div>
+
+      {/* Monthly goal progress */}
+      {cfg.monthlyGoal>0 && (
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"18px 20px", marginBottom:20 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
+            <div style={{ fontWeight:700 }}>Meta mensual</div>
+            <div style={{ fontWeight:700, color:goalPct>=100?C.green:C.blueHi }}>{goalPct}%</div>
+          </div>
+          <div style={{ height:10, background:C.border, borderRadius:5, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${goalPct}%`, background:goalPct>=100?C.green:`linear-gradient(90deg,${C.blue},${C.cyan})`, borderRadius:5, transition:"width .5s" }} />
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:12, color:C.textSm }}>
+            <span>{fmt(monthIncome)} ingresado</span>
+            <span>Meta: {fmt(cfg.monthlyGoal)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Low stock alert */}
+      {lowStock.length>0 && (
+        <div onClick={()=>setPage("inventory")} style={{ background:"#2D1000", border:`1px solid ${C.red}44`, borderRadius:10, padding:"12px 16px", marginBottom:20, fontSize:13, color:C.red, cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:18 }}>📦</span>
+          <span>⚠️ Stock bajo: {lowStock.map(i=>i.name).join(", ")}</span>
+          <span style={{ marginLeft:"auto", fontSize:12 }}>Ver →</span>
+        </div>
+      )}
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
         {/* Upcoming appointments */}
@@ -682,19 +742,19 @@ function Dashboard({ data, setPage }) {
           </div>
           {upcoming.length===0 && <Empty msg="No hay citas próximas" />}
           {upcoming.map(a=>{
-            const client = data.clients.find(c=>c.id===a.clientId);
-            const vehicle= data.vehicles.find(v=>v.id===a.vehicleId);
-            const svc    = (data.services||SERVICES_CAT).find(s=>s.id===a.serviceId); const svcName = a.serviceId==="__custom__" ? (a.customService||"Servicio personalizado") : svc?.name||a.serviceId;
-            const sc     = STATUS_COLORS[a.status];
+            const client  = data.clients.find(c=>c.id===a.clientId);
+            const vehicle = data.vehicles.find(v=>v.id===a.vehicleId);
+            const svc     = a.serviceId==="__custom__"?(a.customService||"Servicio"):(data.services||SERVICES_CAT).find(s=>s.id===a.serviceId)?.name||a.serviceId;
+            const sc      = STATUS_COLORS[a.status];
             return (
-              <div key={a.id} style={{ display:"flex", gap:14, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+              <div key={a.id} style={{ display:"flex", gap:12, alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ background:C.bg, borderRadius:8, padding:"6px 10px", textAlign:"center", minWidth:52, flexShrink:0 }}>
                   <div style={{ fontSize:10, color:C.textSm }}>{a.date.slice(5).replace("-","/")}</div>
                   <div style={{ fontWeight:700, color:C.blueHi, fontSize:13 }}>{a.hour}</div>
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontWeight:600, fontSize:13, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{client?.name||"—"}</div>
-                  <div style={{ fontSize:11, color:C.textSm }}>{vehicle?.plate} · {svc?.name}</div>
+                  <div style={{ fontSize:11, color:C.textSm }}>{vehicle?.plate} · {svc}</div>
                 </div>
                 <Pill label={sc?.label} color={sc?.color} bg={sc?.bg} />
               </div>
@@ -710,8 +770,8 @@ function Dashboard({ data, setPage }) {
           </div>
           {activeOrders.length===0 && <Empty msg="Sin órdenes activas" />}
           {activeOrders.map(o=>{
-            const client = data.clients.find(c=>c.id===o.clientId);
-            const vehicle= data.vehicles.find(v=>v.id===o.vehicleId);
+            const client  = data.clients.find(c=>c.id===o.clientId);
+            const vehicle = data.vehicles.find(v=>v.id===o.vehicleId);
             return (
               <div key={o.id} style={{ padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between" }}>
@@ -728,9 +788,6 @@ function Dashboard({ data, setPage }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   CLIENTS PAGE
-═══════════════════════════════════════════════════ */
 function ClientsPage({ data, save, toast }) {
   const [search, setSearch] = useState("");
   const [modal, setModal]   = useState(null); // null | {mode:"new"|"edit", item}
@@ -4112,6 +4169,156 @@ ${inv.notes?`<div class="section"><h3>Notas</h3><p>${inv.notes}</p></div>`:""}
       </div>
 
       {delId && <Confirm msg="¿Eliminar esta solicitud?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS PAGE — Configuración del sistema
+═══════════════════════════════════════════════════ */
+function SettingsPage() {
+  const [cfg, setCfg] = useState(getSettings());
+  const [saved, setSaved] = useState(false);
+
+  const set = (k,v) => setCfg(p=>({...p,[k]:v}));
+
+  const save = () => {
+    saveSettings(cfg);
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2500);
+    // Update schedule globals
+    SCHEDULE.weekday  = { start:cfg.schedWeekdayStart, end:cfg.schedWeekdayEnd };
+    SCHEDULE.saturday = { start:cfg.schedSatStart,     end:cfg.schedSatEnd     };
+  };
+
+  const ALL_NAV = NAV.filter(n=>n.id!=="dashboard");
+  const hiddenSet = new Set(cfg.hiddenNav||[]);
+  const toggleNav = (id) => {
+    const next = hiddenSet.has(id) ? [...hiddenSet].filter(x=>x!==id) : [...hiddenSet, id];
+    set("hiddenNav", next);
+  };
+
+  const hours = Array.from({length:24},(_,i)=>i);
+
+  return (
+    <div style={{ maxWidth:720, margin:"0 auto" }}>
+      <div style={{ fontWeight:800, fontSize:22, marginBottom:6 }}>⚙️ Configuración del sistema</div>
+      <div style={{ color:C.textMd, fontSize:14, marginBottom:28 }}>Ajustá la moneda, horario, metas y más desde aquí.</div>
+
+      {saved && (
+        <div style={{ background:`${C.green}18`, border:`1px solid ${C.green}44`, borderRadius:10, padding:"12px 18px", marginBottom:20, color:C.green, fontWeight:600 }}>
+          ✅ Configuración guardada correctamente.
+        </div>
+      )}
+
+      {/* MONEDA */}
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:16 }}>💱 Moneda del sistema</div>
+        <div style={{ display:"flex", gap:10 }}>
+          {[["CRC","₡ Colones (CRC)"],["USD","$ Dólares (USD)"]].map(([v,l])=>(
+            <button key={v} onClick={()=>set("currency",v)} style={{ flex:1, padding:"12px", borderRadius:10, border:`1px solid ${cfg.currency===v?C.blueHi:C.border}`, background:cfg.currency===v?`${C.blue}22`:"transparent", color:cfg.currency===v?C.blueHi:C.textMd, fontWeight:cfg.currency===v?700:400, cursor:"pointer", fontSize:14 }}>{l}</button>
+          ))}
+        </div>
+        {cfg.currency==="USD" && <div style={{ marginTop:10, fontSize:12, color:C.textSm }}>💡 El sistema usa ₡530 como tipo de cambio estimado para mostrar en dólares.</div>}
+      </div>
+
+      {/* META MENSUAL */}
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:16 }}>🎯 Meta de utilidad mensual</div>
+        <div>
+          <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:6 }}>Meta en {cfg.currency==="USD"?"dólares (USD)":"colones (₡)"}</label>
+          <input type="number" value={cfg.monthlyGoal} onChange={e=>set("monthlyGoal",+e.target.value)} style={{...IS(), maxWidth:300}} placeholder="500000" />
+          <div style={{ fontSize:12, color:C.textSm, marginTop:6 }}>Aparece como barra de progreso en el panel de inicio.</div>
+        </div>
+      </div>
+
+      {/* HORARIO */}
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:16 }}>🕐 Horario de atención (portal clientes)</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+          <div>
+            <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:10 }}>Lunes a Viernes</div>
+            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:11, color:C.textSm, display:"block", marginBottom:4 }}>Desde</label>
+                <select value={cfg.schedWeekdayStart} onChange={e=>set("schedWeekdayStart",+e.target.value)} style={IS()}>
+                  {hours.map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </div>
+              <span style={{ color:C.textSm, marginTop:16 }}>–</span>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:11, color:C.textSm, display:"block", marginBottom:4 }}>Hasta</label>
+                <select value={cfg.schedWeekdayEnd} onChange={e=>set("schedWeekdayEnd",+e.target.value)} style={IS()}>
+                  {hours.map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:12, fontWeight:600, color:C.textSm, marginBottom:10 }}>Sábado</div>
+            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:11, color:C.textSm, display:"block", marginBottom:4 }}>Desde</label>
+                <select value={cfg.schedSatStart} onChange={e=>set("schedSatStart",+e.target.value)} style={IS()}>
+                  {hours.map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </div>
+              <span style={{ color:C.textSm, marginTop:16 }}>–</span>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:11, color:C.textSm, display:"block", marginBottom:4 }}>Hasta</label>
+                <select value={cfg.schedSatEnd} onChange={e=>set("schedSatEnd",+e.target.value)} style={IS()}>
+                  {hours.map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:16 }}>
+          <input type="checkbox" checked={cfg.schedSunOpen||false} onChange={e=>set("schedSunOpen",e.target.checked)} style={{ width:16, height:16, cursor:"pointer", accentColor:C.blueHi }} />
+          <label style={{ fontSize:13, color:C.textMd, cursor:"pointer" }}>Abrir los domingos</label>
+        </div>
+      </div>
+
+      {/* CARGAS SOCIALES Y PLANILLA */}
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:16 }}>👥 Cargas sociales y planilla</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:C.textSm, display:"block", marginBottom:6 }}>% Cargas sociales (CCSS)</label>
+            <input type="number" value={cfg.socialCharges} onChange={e=>set("socialCharges",+e.target.value)} style={IS()} step="0.01" />
+            <div style={{ fontSize:11, color:C.textSm, marginTop:4 }}>Costa Rica: 26.67% patronal</div>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", justifyContent:"center" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <input type="checkbox" checked={cfg.payrollEnabled||false} onChange={e=>set("payrollEnabled",e.target.checked)} style={{ width:16, height:16, cursor:"pointer", accentColor:C.blueHi }} />
+              <label style={{ fontSize:13, color:C.textMd, cursor:"pointer" }}>Activar módulo de planilla</label>
+            </div>
+            <div style={{ fontSize:11, color:C.textSm, marginTop:6 }}>Permite registrar salarios y calcular cargas automáticamente.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* MENÚ LATERAL */}
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"22px 24px", marginBottom:24 }}>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>📋 Personalizar menú lateral</div>
+        <div style={{ fontSize:13, color:C.textMd, marginBottom:16 }}>Marcá los módulos que querés ocultar del menú. El inicio siempre es visible.</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          {ALL_NAV.map(n=>{
+            const hidden = hiddenSet.has(n.id);
+            return (
+              <div key={n.id} onClick={()=>toggleNav(n.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:8, border:`1px solid ${hidden?C.border:C.blueHi}`, background:hidden?C.bg:`${C.blue}11`, cursor:"pointer" }}>
+                <span style={{ fontSize:16, opacity:hidden?.4:1 }}>{n.icon}</span>
+                <span style={{ fontSize:13, fontWeight:600, color:hidden?C.textSm:C.text, textDecoration:hidden?"line-through":"none" }}>{n.label}</span>
+                <span style={{ marginLeft:"auto", fontSize:11, color:hidden?C.textSm:C.blueHi }}>{hidden?"Oculto":"Visible"}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <button onClick={save} style={{ width:"100%", padding:"14px", borderRadius:12, border:"none", background:`linear-gradient(135deg,${C.blue},${C.cyan})`, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer" }}>
+        💾 Guardar configuración
+      </button>
     </div>
   );
 }
