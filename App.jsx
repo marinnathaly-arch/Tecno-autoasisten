@@ -4322,3 +4322,140 @@ function SettingsPage() {
     </div>
   );
 }
+
+/* ═══════════════════════════════════════════════════
+   QUOTES PAGE — Cotizaciones (admin)
+═══════════════════════════════════════════════════ */
+const QUOTE_STATUS = {
+  pending: { label:"Solicitada", color:"#F59E0B", bg:"#2D2000" },
+  quoted:  { label:"Cotizada",   color:"#3B82F6", bg:"#001A2D" },
+  sent:    { label:"Enviada",    color:"#10B981", bg:"#002D1A" },
+  closed:  { label:"Cerrada",    color:"#8B5CF6", bg:"#1A0A2D" },
+};
+
+function QuotesPage({ data, save, toast }) {
+  const [modal, setModal] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const [filter, setFilter] = useState("all");
+
+  const quotes = (data.quotes||[]).map(q=>({
+    ...q,
+    services: Array.isArray(q.services) ? q.services : [],
+  }));
+  const filtered = filter==="all" ? quotes : quotes.filter(q=>q.status===filter);
+  const sorted = [...filtered].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+
+  const upd = (id, patch) => { save({ quotes: quotes.map(q=>q.id===id?{...q,...patch}:q) }); toast("Actualizada"); };
+  const del = (id) => { save({ quotes: quotes.filter(q=>q.id!==id) }); toast("Eliminada","err"); setDelId(null); };
+
+  const buildWALink = (q) => {
+    const client  = data.clients.find(c=>c.id===q.clientId);
+    const vehicle = data.vehicles.find(v=>v.id===q.vehicleId);
+    const svcLines = (q.services||[]).map(sid => {
+      const s=(data.services||SERVICES_CAT).find(x=>x.id===sid);
+      return s ? `• ${s.name} — ${fmtCRC(s.price)}` : null;
+    }).filter(Boolean).join("\n");
+    const msg = `Hola ${client?.name||""}, le compartimos la cotización de Tecno AutoAsisten CR:\n\n${vehicle?`Vehículo: ${vehicle.year} ${vehicle.brand} ${vehicle.model} (${vehicle.plate})\n\n`:""}Servicios cotizados:\n${svcLines||"—"}\n\n*Total: ${fmtCRC(q.total)}*\n\n${q.notes?`Notas: ${q.notes}\n\n`:""}¡Gracias por confiar en nosotros!`;
+    const phone = (client?.phone||"").replace(/\D/g,"");
+    const waPhone = phone ? (phone.startsWith("506")?phone:`506${phone}`) : "";
+    return waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}` : null;
+  };
+
+  const counts = { pending:quotes.filter(q=>q.status==="pending").length, quoted:quotes.filter(q=>q.status==="quoted").length, sent:quotes.filter(q=>q.status==="sent").length };
+
+  return (
+    <div>
+      <PageHeader title={`Cotizaciones (${quotes.length})`} />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:20 }}>
+        {[["pending","Pendientes",C.amber],["quoted","Listas para enviar",C.blueHi],["sent","Enviadas",C.green]].map(([k,l,color])=>(
+          <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 18px" }}>
+            <div style={{ fontSize:11, color:C.textSm, textTransform:"uppercase", letterSpacing:.7 }}>{l}</div>
+            <div style={{ fontSize:24, fontWeight:800, color, marginTop:5 }}>{counts[k]||0}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["all","Todas"],["pending","Solicitadas"],["quoted","Cotizadas"],["sent","Enviadas"],["closed","Cerradas"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${filter===v?C.blueHi:C.border}`, background:filter===v?`${C.blue}22`:"transparent", color:filter===v?C.blueHi:C.textMd, cursor:"pointer", fontSize:13, fontWeight:filter===v?700:400 }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        {sorted.map(q=>{
+          const client  = data.clients.find(c=>c.id===q.clientId);
+          const vehicle = data.vehicles.find(v=>v.id===q.vehicleId);
+          const sc = QUOTE_STATUS[q.status]||QUOTE_STATUS.pending;
+          const waLink = buildWALink(q);
+          return (
+            <div key={q.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 20px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
+                <div style={{ flex:1, minWidth:200 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
+                    <div style={{ fontWeight:700, fontSize:15 }}>{client?.name||"Cliente desconocido"}</div>
+                    {q.quoteType && <span style={{ fontSize:11, fontWeight:700, background:q.quoteType==="diagnosis"?`${C.blueHi}22`:`${C.amber}22`, color:q.quoteType==="diagnosis"?C.blueHi:C.amber, borderRadius:6, padding:"2px 8px" }}>{q.quoteType==="diagnosis"?"🔍 Diagnóstico":q.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</span>}
+                  </div>
+                  {vehicle && <div style={{ fontSize:12, color:C.textSm, marginBottom:8 }}>🚗 {vehicle.plate} — {vehicle.brand} {vehicle.model}</div>}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    {q.possibleFailure && <div style={{ background:C.bg, borderRadius:8, padding:"8px 12px" }}><div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Falla / Revisión</div><div style={{ fontSize:13 }}>{q.possibleFailure}</div></div>}
+                    {q.possibleRepair && <div style={{ background:C.bg, borderRadius:8, padding:"8px 12px" }}><div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Reparación sugerida</div><div style={{ fontSize:13 }}>{q.possibleRepair}</div></div>}
+                    {q.description && <div style={{ background:C.bg, borderRadius:8, padding:"8px 12px", gridColumn:"span 2" }}><div style={{ fontSize:10, fontWeight:700, color:C.textSm, textTransform:"uppercase", letterSpacing:.7, marginBottom:3 }}>Detalles</div><div style={{ fontSize:13 }}>{q.description}</div></div>}
+                  </div>
+                  {q.services?.length>0 && <div style={{ fontSize:12, color:C.textSm, marginTop:8 }}>Servicios: {q.services.map(sid=>(data.services||SERVICES_CAT).find(s=>s.id===sid)?.name).filter(Boolean).join(", ")}</div>}
+                  {q.total>0 && <div style={{ fontWeight:800, fontSize:17, color:C.green, marginTop:8 }}>{fmtCRC(q.total)}</div>}
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
+                  <Pill label={sc.label} color={sc.color} bg={sc.bg} />
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                    {(q.status==="pending"||q.status==="quoted") && <TBtn label="✏️ Armar" color={C.blueHi} onClick={()=>setModal({item:q})} />}
+                    {q.status==="quoted" && waLink && <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={()=>upd(q.id,{status:"sent"})} style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.green}44`, background:`${C.green}18`, color:C.green, fontWeight:700, fontSize:12, textDecoration:"none" }}>📲 WhatsApp</a>}
+                    {q.status==="sent" && waLink && <a href={waLink} target="_blank" rel="noopener noreferrer" style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.textMd, fontWeight:600, fontSize:12, textDecoration:"none" }}>📲 Reenviar</a>}
+                    {q.status!=="closed" && <TBtn label="✓ Cerrar" color={C.purple} onClick={()=>upd(q.id,{status:"closed"})} />}
+                    <IBtn icon="🗑" red onClick={()=>setDelId(q.id)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length===0 && <Empty msg="No hay cotizaciones en este filtro" />}
+      </div>
+      {modal && <QuoteModal item={modal.item} data={data} onSave={(item)=>{ upd(item.id,item); setModal(null); toast("Cotización actualizada"); }} onClose={()=>setModal(null)} />}
+      {delId && <Confirm msg="¿Eliminar esta cotización?" onOk={()=>del(delId)} onCancel={()=>setDelId(null)} />}
+    </div>
+  );
+}
+
+function QuoteModal({ item, data, onSave, onClose }) {
+  const [f, setF] = useState({ ...item, services: Array.isArray(item.services)?item.services:[] });
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const toggleSvc = (id) => setF(p=>({ ...p, services: p.services.includes(id)?p.services.filter(s=>s!==id):[...p.services,id] }));
+  const services = data.services||SERVICES_CAT;
+  const client = data.clients.find(c=>c.id===f.clientId);
+  const total = f.services.reduce((s,id)=>s+(services.find(x=>x.id===id)?.price||0),0) + (+f.manualAdjust||0);
+  return (
+    <Modal title="Armar cotización" onClose={onClose} wide>
+      <div style={{ background:C.bg, borderRadius:10, padding:"14px 16px", marginBottom:16 }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
+          <div style={{ fontSize:13, fontWeight:700 }}>{client?.name}</div>
+          {f.quoteType && <span style={{ fontSize:11, fontWeight:700, background:`${C.blueHi}22`, color:C.blueHi, borderRadius:6, padding:"2px 8px" }}>{f.quoteType==="diagnosis"?"🔍 Diagnóstico":f.quoteType==="repair"?"🔧 Reparación":"🛡️ Garantía"}</span>}
+        </div>
+        {f.possibleFailure && <div style={{ fontSize:13, color:C.text }}>{f.possibleFailure}</div>}
+      </div>
+      <Field label="Servicios a incluir">
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
+          {services.map(s=>{ const sel=f.services.includes(s.id); return <button key={s.id} onClick={()=>toggleSvc(s.id)} style={{ padding:"7px 13px", borderRadius:8, border:`1px solid ${sel?C.blueHi:C.border}`, background:sel?`${C.blue}22`:"transparent", color:sel?C.blueHi:C.textMd, cursor:"pointer", fontSize:12, fontWeight:sel?700:400 }}>{s.name} · {fmtCRC(s.price)}</button>; })}
+        </div>
+      </Field>
+      <div style={{ marginTop:14 }}>
+        <Field label="Ajuste manual (₡)"><input type="number" value={f.manualAdjust||0} onChange={e=>set("manualAdjust",+e.target.value)} style={IS()} placeholder="0" /></Field>
+      </div>
+      <div style={{ marginTop:14 }}>
+        <Field label="Notas para el cliente"><textarea value={f.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} style={{...IS(),resize:"vertical"}} /></Field>
+      </div>
+      <div style={{ background:C.bg, borderRadius:10, padding:"12px 16px", marginTop:16, display:"flex", justifyContent:"space-between" }}>
+        <span style={{ color:C.textMd, fontSize:14 }}>Total cotizado</span>
+        <span style={{ fontWeight:800, fontSize:18, color:C.green }}>{fmtCRC(total)}</span>
+      </div>
+      <ModalActions onSave={()=>onSave({...f, total, status:"quoted"})} onClose={onClose} />
+    </Modal>
+  );
+}
